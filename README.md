@@ -53,6 +53,8 @@ Then restart Photoshop and open **Plugins > Color Script**.
 - PSD/PSB inputs contribute their flattened composite only.
 - Strength changes apply to the selected panel/row; there is no per-tint strength.
 - The standalone Python app (`palette_gui.py`) remains the more feature-rich option with drag-to-arrange, crop, orientation, and .aco export.
+- Due to running into issues with running out of free usage, I was unable to fix the "Import template" feature, so at the moment they will be imported in grayscale by default. I will fix this when I have enough free usage to do so.
+- Similarly to last comment, another thing that does not work properly is the sliding scale that changes the color range. This may also be because of the values of the images I picked. I will have to troubleshoot that. 
 
 ## What I'd build next
 - Add a crop tool for template panels.
