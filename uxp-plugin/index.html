@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --ink: #0b3550;
+        --ink-soft: #3f6f86;
+        --line: rgba(255, 255, 255, 0.78);
+        --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.42));
+        --glass-edge: rgba(255, 255, 255, 0.86);
+      }
+
+      html, body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Segoe UI", "Adobe Clean", Tahoma, sans-serif;
+        font-size: 12px;
+        line-height: 1.42;
+        color: var(--ink);
+        background-color: #8fd6ee;
+        background: linear-gradient(180deg, #eaf9ff 0%, #aee4f8 26%, #64c8ea 56%, #219fca 80%, #0d769f 100%);
+      }
+
+      #scroll {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding: 10px 10px 92px;
+        box-sizing: border-box;
+      }
+
+      body::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0) 0 9px, rgba(255, 255, 255, 0.5) 10px 11px, rgba(255, 255, 255, 0) 12px),
+          radial-gradient(circle at 82% 9%, rgba(255, 255, 255, 0) 0 18px, rgba(255, 255, 255, 0.4) 19px 21px, rgba(255, 255, 255, 0) 22px),
+          radial-gradient(circle at 92% 38%, rgba(255, 255, 255, 0) 0 5px, rgba(255, 255, 255, 0.45) 6px 7px, rgba(255, 255, 255, 0) 8px),
+          radial-gradient(circle at 24% 66%, rgba(255, 255, 255, 0) 0 13px, rgba(255, 255, 255, 0.35) 14px 15px, rgba(255, 255, 255, 0) 16px),
+          radial-gradient(circle at 68% 88%, rgba(255, 255, 255, 0) 0 7px, rgba(255, 255, 255, 0.4) 8px 9px, rgba(255, 255, 255, 0) 10px);
+      }
+
+      #scroll > * { position: relative; }
+
+      .scroll-nav {
+        position: absolute;
+        right: 14px;
+        bottom: 14px;
+        z-index: 40;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 4px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.85);
+        background-color: rgba(238, 252, 255, 0.9);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(190, 235, 250, 0.9));
+        box-shadow:
+          0 4px 10px rgba(5, 60, 90, 0.28),
+          inset 0 1px 0 #ffffff;
+      }
+
+      .scroll-btn {
+        box-sizing: border-box;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 10px;
+        line-height: 1;
+        color: #0a3d57;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+        cursor: pointer;
+        background-color: #bfe9f7;
+        background: linear-gradient(180deg, #ffffff 0%, #d9f4ff 45%, #9fdcf4 55%, #6dc6e8 100%);
+        box-shadow:
+          0 2px 4px rgba(5, 60, 90, 0.22),
+          inset 0 1px 0 #ffffff;
+      }
+
+      .scroll-btn:hover {
+        background: linear-gradient(180deg, #ffffff 0%, #e7faff 45%, #b6e7fa 55%, #82d2ef 100%);
+      }
+
+      .scroll-btn:active { transform: translateY(1px); }
+
+      .scroll-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+        transform: none;
+      }
+
+      [hidden] { display: none !important; }
+
+      .hero {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 10px;
+        margin: 0 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        background-color: #ecf9ff;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(232, 249, 255, 0.6) 46%, rgba(146, 219, 244, 0.55) 100%);
+        box-shadow:
+          0 6px 14px rgba(6, 68, 96, 0.18),
+          inset 0 1px 0 #ffffff,
+          inset 0 -1px 0 rgba(27, 126, 164, 0.18);
+      }
+
+      .orb {
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+        text-shadow: 0 1px 1px rgba(3, 52, 78, 0.6);
+        background-color: #25b6e2;
+        background:
+          radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.95) 0 3px, rgba(255, 255, 255, 0) 5px),
+          linear-gradient(180deg, #8fe9ff 0%, #35b8e6 46%, #0c7fae 100%);
+        border: 1px solid rgba(255, 255, 255, 0.85);
+        box-shadow:
+          0 2px 5px rgba(5, 60, 88, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.9),
+          inset 0 -2px 4px rgba(3, 66, 96, 0.25);
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        color: #083a58;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
+      }
+
+      .hero p {
+        margin: 1px 0 0;
+        font-size: 10.5px;
+        color: var(--ink-soft);
+      }
+
+      #status {
+        margin: 0 0 10px;
+        padding: 7px 9px;
+        border: 1px solid var(--line);
+        border-left: 4px solid #48b9dd;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.55);
+        box-shadow: inset 0 1px 0 #ffffff;
+        color: #1d5a76;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      #status.ok {
+        border-left-color: #1cae7e;
+        color: #0b6b4d;
+        background: rgba(238, 255, 248, 0.65);
+      }
+
+      #status.err {
+        border-left-color: #d9534f;
+        color: #8f1f1f;
+        background: rgba(255, 240, 240, 0.72);
+      }
+
+      .progress {
+        height: 7px;
+        margin: 0 0 10px;
+        border-radius: 6px;
+        background-color: #9fd8ea;
+        background: linear-gradient(180deg, #bfe9f7, #7fc9e4);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: inset 0 1px 2px rgba(9, 60, 88, 0.35);
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        width: calc(100% + 22px);
+        background-color: #25b6e2;
+        background-image:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 55%),
+          repeating-linear-gradient(115deg, #25b6e2 0 11px, #7fe3ff 11px 22px);
+        animation: slides 0.9s linear infinite;
+      }
+
+      @keyframes slides {
+        from { transform: translateX(0); }
+        to { transform: translateX(-22px); }
+      }
+
+      .card {
+        position: relative;
+        margin: 0 0 10px;
+        padding: 10px;
+        border: 1px solid var(--glass-edge);
+        border-radius: 13px;
+        background-color: rgba(255, 255, 255, 0.55);
+        background: var(--glass);
+        box-shadow:
+          0 5px 12px rgba(6, 68, 96, 0.16),
+          inset 0 1px 0 #ffffff;
+      }
+
+      .card::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 0;
+        height: 42%;
+        z-index: 0;
+        border-radius: 12px 12px 60px 60px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+        pointer-events: none;
+      }
+
+      .card > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 0 8px;
+      }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #ffffff 0 1px, #3fc4ea 2px, #0d7fae 100%);
+        box-shadow: 0 0 4px rgba(80, 205, 240, 0.8);
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: #245f7a;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 7px 0;
+      }
+
+      .row.tight { margin: 5px 0; }
+
+      .label {
+        flex: 0 0 auto;
+        min-width: 76px;
+        color: var(--ink-soft);
+        font-size: 11px;
+      }
+
+      .hint {
+        margin: 2px 0 7px;
+        font-size: 10.5px;
+        color: var(--ink-soft);
+      }
+
+      .field {
+        box-sizing: border-box;
+        padding: 6px 8px;
+        border: 1px solid rgba(78, 160, 192, 0.6);
+        border-radius: 8px;
+        background-color: #eaf7fd;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(226, 246, 254, 0.78));
+        box-shadow:
+          inset 0 1px 3px rgba(9, 67, 95, 0.2),
+          0 1px 0 rgba(255, 255, 255, 0.8);
+        color: #0b3550;
+        font-family: inherit;
+        font-size: 12px;
+        outline: none;
+      }
+
+      .field:focus {
+        border-color: #1fa6d6;
+        box-shadow:
+          0 0 0 2px rgba(80, 205, 240, 0.5),
+          inset 0 1px 3px rgba(9, 67, 95, 0.18);
+      }
+
+      .field.num { width: 62px; }
+
+      .field.num::-webkit-inner-spin-button,
+      .field.num::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
+      .field.grow { flex: 1 1 120px; width: auto; }
+
+      .btn {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 7px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        border-radius: 9px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #0a3d57;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+        cursor: pointer;
+        background-color: #bfe9f7;
+        background: linear-gradient(180deg, #ffffff 0%, #d9f4ff 45%, #9fdcf4 55%, #6dc6e8 100%);
+        box-shadow:
+          0 2px 4px rgba(5, 60, 90, 0.24),
+          inset 0 1px 0 #ffffff,
+          inset 0 -1px 0 rgba(0, 60, 90, 0.16);
+      }
+
+      .btn:hover {
+        background: linear-gradient(180deg, #ffffff 0%, #e7faff 45%, #b6e7fa 55%, #82d2ef 100%);
+      }
+
+      .btn:active {
+        transform: translateY(1px);
+        box-shadow:
+          0 1px 2px rgba(5, 60, 90, 0.28),
+          inset 0 2px 4px rgba(5, 72, 102, 0.28);
+      }
+
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+        transform: none;
+      }
+
+      .btn.cta {
+        color: #ffffff;
+        text-shadow: 0 1px 1px rgba(0, 45, 70, 0.6);
+        border-color: rgba(255, 255, 255, 0.65);
+        background-color: #189ec9;
+        background: linear-gradient(180deg, #8fe9ff 0%, #2bbbe6 46%, #0b8cbe 54%, #0a6f9c 100%);
+        box-shadow:
+          0 3px 6px rgba(4, 58, 86, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.75),
+          inset 0 -2px 4px rgba(3, 66, 96, 0.3);
+      }
+
+      .btn.cta:hover {
+        background: linear-gradient(180deg, #a5f0ff 0%, #45c9ef 46%, #159ccd 54%, #0b7aa8 100%);
+      }
+
+      .btn.mood {
+        flex: 1 1 44%;
+        width: auto;
+        padding: 7px 6px;
+        font-size: 11px;
+      }
+
+      .btn.mood-happy {
+        background-color: #f5b82e;
+        background: linear-gradient(180deg, #fff8cf 0%, #ffe680 46%, #f5b82e 54%, #dd9414 100%);
+      }
+
+      .btn.mood-tense {
+        background-color: #f0713a;
+        background: linear-gradient(180deg, #ffe2cf 0%, #ffb07a 46%, #f0713a 54%, #cf4a1c 100%);
+      }
+
+      .btn.mood-sad {
+        background-color: #8fb4f2;
+        background: linear-gradient(180deg, #eaf4ff 0%, #c0d8ff 46%, #8fb4f2 54%, #5f8ad6 100%);
+      }
+
+      .btn.mood-cautious {
+        background-color: #7cc04b;
+        background: linear-gradient(180deg, #f0ffe2 0%, #b8e88f 46%, #7cc04b 54%, #4f8f27 100%);
+      }
+
+      .check {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        cursor: pointer;
+        color: #174e68;
+        font-size: 11px;
+        outline: none;
+      }
+
+      .check input { display: none; }
+
+      .check .box {
+        position: relative;
+        flex: 0 0 auto;
+        width: 15px;
+        height: 15px;
+        margin-top: 1px;
+        border-radius: 5px;
+        border: 1px solid rgba(61, 150, 185, 0.75);
+        background-color: #e8f7fe;
+        background: linear-gradient(180deg, #ffffff, #d9f2ff);
+        box-shadow: inset 0 1px 2px rgba(0, 70, 100, 0.22);
+      }
+
+      .check.on .box {
+        border-color: #0e8a6e;
+        background-color: #1fb894;
+        background: linear-gradient(180deg, #8ff0d0, #1fb894 55%, #0e8a6e);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.7),
+          0 1px 2px rgba(4, 70, 56, 0.25);
+      }
+
+      .check.on .box::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 1px;
+        width: 4px;
+        height: 8px;
+        border: solid #ffffff;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+      }
+
+      .check:focus .box {
+        box-shadow:
+          0 0 0 2px rgba(80, 205, 240, 0.55),
+          inset 0 1px 2px rgba(0, 70, 100, 0.22);
+      }
+
+      .btn.small {
+        width: auto;
+        flex: 0 0 auto;
+        padding: 5px 9px;
+        font-size: 10.5px;
+      }
+
+      .panel-summary {
+        flex: 1 1 120px;
+        font-size: 10.5px;
+        color: var(--ink-soft);
+      }
+
+      .panel-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 3px 0 5px;
+      }
+
+      .panel-row-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .panel-row-label {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: #2d708c;
+      }
+
+      .panel-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .panel-chip {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1 1 106px;
+        min-width: 0;
+        padding: 4px;
+        border: 1px solid rgba(82, 160, 190, 0.55);
+        border-radius: 9px;
+        background-color: #eaf7fd;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(214, 240, 251, 0.7));
+        box-shadow:
+          0 1px 2px rgba(8, 64, 90, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        color: #174e68;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .panel-chip:hover {
+        border-color: #2aa6d4;
+        background: linear-gradient(180deg, #ffffff, #dff6ff);
+      }
+
+      .panel-chip.on {
+        border-color: #0e8a6e;
+        background: linear-gradient(180deg, #f4fffb, #c8f4e8);
+        box-shadow:
+          0 0 0 2px rgba(31, 184, 148, 0.32),
+          inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      }
+
+      .panel-check {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        margin-right: 2px;
+      }
+
+      .panel-check-input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        cursor: pointer;
+        accent-color: #18a6d4;
+      }
+
+      .panel-chip:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .panel-thumb {
+        position: relative;
+        flex: 0 0 46px;
+        width: 46px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.85);
+        border-radius: 6px;
+        overflow: hidden;
+        background-color: #dfeef7;
+        background: linear-gradient(135deg, #eef8fd, #a9c8d8);
+        box-shadow: inset 0 1px 3px rgba(9, 67, 95, 0.2);
+      }
+
+      .panel-thumb-fallback {
+        font-size: 10px;
+        font-weight: 700;
+        color: #50728a;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+      }
+
+      .panel-thumb-img {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: none;
+      }
+
+      .panel-meta {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .panel-num {
+        font-size: 10px;
+        font-weight: 700;
+        color: #0b4560;
+        white-space: nowrap;
+      }
+
+      .panel-name {
+        max-width: 100%;
+        font-size: 9px;
+        color: #3b6f87;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .slider {
+        flex: 1 1 100px;
+        min-width: 80px;
+        height: 18px;
+        margin: 0;
+        accent-color: #18a6d4;
+      }
+
+      .strength-val {
+        flex: 0 0 34px;
+        text-align: right;
+        font-size: 10.5px;
+        color: var(--ink-soft);
+      }
+
+      .emo-swatches {
+        display: flex;
+        height: 16px;
+        margin: 2px 0 8px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        background: rgba(255, 255, 255, 0.35);
+        box-shadow: inset 0 1px 3px rgba(9, 67, 95, 0.22);
+      }
+
+      .emo-swatches div { flex: 1 1 0; height: 100%; }
+
+      #grayHint { margin: 0 0 7px; }
+
+      .help {
+        margin-top: 8px;
+        padding: 7px 8px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        background: rgba(255, 255, 255, 0.42);
+      }
+
+      .help-title {
+        margin-bottom: 3px;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #245f7a;
+      }
+
+      .help p {
+        margin: 0;
+        font-size: 10.5px;
+        color: var(--ink-soft);
+      }
+
+      ::-webkit-scrollbar { width: 10px; }
+
+      ::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.25);
+        border-radius: 6px;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        background: linear-gradient(180deg, #a9e6fb, #39b2dc);
+      }
+
+      @media (max-width: 320px) {
+        .label { min-width: 100%; }
+        .field.num { width: 70px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scroll">
+    <header class="hero">
+      <div class="orb">CS</div>
+      <div>
+        <h1>Color Script</h1>
+        <p>Grayscale panels &middot; palettes &middot; mood tints</p>
+      </div>
+    </header>
+
+    <div id="progress" class="progress" style="display: none;"><div class="progress-bar"></div></div>
+    <div id="status">Ready.</div>
+
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>Color script template</h2></div>
+      <div class="row tight">
+        <span class="label">Columns (2-5)</span>
+        <input id="optTemplateCols" class="field num" type="number" min="2" max="5" step="1" placeholder="3" value="3" />
+      </div>
+      <div class="row">
+        <button id="btnTemplate" class="btn cta" type="button">Build Template...</button>
+      </div>
+      <p class="hint">
+        Lays out the chosen images in an 11x17 panel grid with no swatches, labels or title.
+        Click a panel thumbnail, then pick a mood to color it.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>Template panels</h2></div>
+      <div class="row tight">
+        <span id="panelSummary" class="panel-summary">No template panels found.</span>
+        <button id="btnRefreshPanels" class="btn small" type="button">Refresh</button>
+      </div>
+      <div id="panelList" class="panel-list"></div>
+      <p class="hint">
+        Check the box next to a panel to select it for coloring. Click the panel to select
+        in Photoshop. The Layers panel selection also works.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>Palette sheet</h2></div>
+      <div class="row">
+        <button id="btnImages" class="btn cta" type="button">Build from images...</button>
+      </div>
+      <div class="row tight">
+        <span class="label">Colors</span>
+        <input id="optColors" class="field num" type="number" min="2" max="16" step="1" placeholder="6" value="6" />
+      </div>
+      <div class="row tight">
+        <div id="sharedCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optShared" type="checkbox" hidden />
+          <span class="box"></span>
+          <span>One palette for all images</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <span class="label">Sheet title</span>
+        <input id="optTitle" class="field grow" type="text" placeholder="optional" />
+      </div>
+      <div class="row">
+        <button id="btnBuild" class="btn" type="button">Build from layout JSON...</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>Emotion color</h2></div>
+      <div class="row">
+        <button id="btnImportGray" class="btn cta" type="button">Build Template...</button>
+      </div>
+      <p id="grayHint" class="hint">
+        Build a grayscale template from one or more images, then choose a mood below to
+        color it. Shift+click panels to select multiple.
+      </p>
+      <div class="row emotion-buttons">
+        <button id="btnEmoHappy" class="btn mood mood-happy" type="button">Happy</button>
+        <button id="btnEmoTense" class="btn mood mood-tense" type="button">Tense</button>
+        <button id="btnEmoSad" class="btn mood mood-sad" type="button">Sad</button>
+        <button id="btnEmoCautious" class="btn mood mood-cautious" type="button">Cautious</button>
+      </div>
+      <div id="emoSwatches" class="emo-swatches">
+        <div></div><div></div><div></div><div></div>
+      </div>
+      <div class="row tight">
+<div id="gradientCheck" class="check" role="checkbox" aria-checked="true" tabindex="0">
+        <input id="optGradientMap" type="checkbox" checked />
+        <span class="box"></span>
+        <span>Gradient map for grayscale</span>
+      </div>
+      <div class="row tight">
+<div id="rowCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+        <input id="optEmotionRow" type="checkbox" />
+        <span class="box"></span>
+        <span>Whole row, slight variations</span>
+      </div>
+      </div>
+      <div class="row tight">
+        <span class="label">Strength</span>
+        <input id="optEmotionStrength" class="slider" type="range" min="10" max="100" step="1" value="100" />
+        <span id="strengthOut" class="strength-val">100%</span>
+      </div>
+      <div class="row tight">
+        <span class="label">Color range</span>
+        <input id="optColorRange" class="slider" type="range" min="0" max="200" step="1" value="100" />
+        <span id="rangeOut" class="strength-val">100%</span>
+      </div>
+      <div class="row">
+        <button id="btnEmotionClear" class="btn" type="button">Clear emotion tint</button>
+      </div>
+      <div class="help">
+        <div class="help-title">How it works</div>
+        <p>
+          In a color script template, click a panel thumbnail (or select a panel layer) and pick a
+          mood. Each click makes a new palette and clicking the same panel's overlay rerolls it.
+          With "Whole row, slight variations" ticked, the mood covers every panel in that row with
+          a gentle left-to-right hue drift, all in one undo step. Strength adjusts the whole row
+          while row mode is on. Import grayscale images opens a multi-select file picker and waits
+          for a mood: that click adds the same gradient map (one palette) to every imported image.
+          Pick another mood to reroll them all. Without a template or import, a mood tints the
+          active document.
+          With Gradient map checked a grayscale image is replaced by that ramp, otherwise a
+          non-destructive Color layer tints it. Drag Strength to adjust, or Clear to remove.
+        </p>
+      </div>
+    </section>
+
+    </div>
+    <div id="scrollNav" class="scroll-nav" style="display: none;">
+      <button id="scrollUp" class="scroll-btn" type="button" title="Scroll up" aria-label="Scroll up">&#9650;</button>
+      <button id="scrollDown" class="scroll-btn" type="button" title="Scroll down" aria-label="Scroll down">&#9660;</button>
+    </div>
+    <script src="index.js"></script>
+  </body>
+</html>
