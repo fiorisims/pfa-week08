@@ -64,11 +64,21 @@ Then restart Photoshop and open **Plugins > Color Script**.
 - Add more emotion moods and allow custom mood palettes.
 
 ## Peer run (from A6)
-<!-- TODO: paste your Peer run section from A6 here -->
-<!-- Add a line below on what you fixed based on peer feedback -->
+Irene's Peer Run: 
+
+-The first issue I hit was that pygame crashed immediately the moment I clicked any button in the window, so I had opencode bypass that problem before I could use the tool at all.
+-After that workaround, every feature and button worked and ran smoothly — loading images, sampling and building the palette, and saving the sheet — with the only remaining exception being the Photoshop export button.
+-A nice touch was that each swatch displays its hex code, but the hex codes sometimes clip into the color palette area instead of staying fully inside their swatch.
+
+What Was Fixed:
+
+-Changed it into a photoshop plugin that can run directly inside the program
+-Removed the swatches/hexcode functions to make it work more like a proper color script creator which does not display those 
+-Added gradient map functions based on mood temperatures
+-Added function to select individual panels/layers within the interface to color them individually 
 
 ## Screen recording
-<!-- TODO: add 1-3 minute screen recording link here -->
+https://drive.google.com/file/d/1x20Wj68gNZWWMd3UkDT0WfmcwiWYiUHo/view?usp=sharing
 
 ## Files
 ```
