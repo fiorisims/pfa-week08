@@ -66,9 +66,15 @@ Then restart Photoshop and open **Plugins > Color Script**.
 ## Peer run (from A6)
 Irene's Peer Run: 
 
--The first issue I hit was that pygame crashed immediately the moment I clicked any button in the window, so I had opencode bypass that problem before I could use the tool at all.
--After that workaround, every feature and button worked and ran smoothly — loading images, sampling and building the palette, and saving the sheet — with the only remaining exception being the Photoshop export button.
--A nice touch was that each swatch displays its hex code, but the hex codes sometimes clip into the color palette area instead of staying fully inside their swatch.
+- The first issue I hit was that pygame crashed immediately the moment I clicked any button in the window, so I had opencode bypass that problem before I could use the tool at all.
+- After that workaround, every feature and button worked and ran smoothly — loading images, sampling and building the palette, and saving the sheet — with the only remaining exception being the Photoshop export button.
+- A nice touch was that each swatch displays its hex code, but the hex codes sometimes clip into the color palette area instead of staying fully inside their swatch.
+
+Elise's Peer Run: 
+
+- I installed Python and the dependencies needed to run palette_gui.py, then added an image to test the tool.
+- The interface worked very well and successfully generated a color palette preview from my image.
+- The interface is clear and easy to use, although a note about the recommended Python version would make setup even easier.
 
 What Was Fixed:
 
