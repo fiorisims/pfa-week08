@@ -11,7 +11,7 @@
   const api = factory();
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
   else { Object.assign(root, api); }
-})(this, function () {
+})(typeof window !== "undefined" ? window : this, function () {
   const MOODS = {
     happy:      { label: "Happy",      colors: [[74, 44, 107], [214, 69, 80], [247, 166, 58], [255, 232, 163]] },
     tense:      { label: "Tense",      colors: [[16, 20, 26], [61, 14, 20], [178, 34, 34], [242, 194, 48]] },

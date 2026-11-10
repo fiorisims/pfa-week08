@@ -108,11 +108,19 @@
       } else if (step.op === "set") {
         const el = document.getElementById(step.id);
         if (!el) { throw new Error("no element " + step.id); }
-        if (typeof step.checked === "boolean") { el.checked = step.checked; }
-        else { el.value = step.value; }
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        out.value = await waitIdle(step.maxMs);
+        if (typeof step.checked === "boolean") {
+          // Checkboxes are hidden inputs behind a styled row: click the row.
+          if (!!el.checked !== step.checked) {
+            const row = el.closest ? el.closest(".check") : el.parentNode;
+            (row || el).click();
+          }
+          out.value = { checked: !!el.checked, idle: await waitIdle(step.maxMs) };
+        } else {
+          el.value = step.value;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          out.value = await waitIdle(step.maxMs);
+        }
       } else if (step.op === "wait") {
         await sleep(step.ms || 500);
       } else if (step.op === "waitIdle") {

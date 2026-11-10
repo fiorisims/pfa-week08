@@ -11,7 +11,7 @@
   const api = factory();
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
   else { Object.assign(root, api); }
-})(this, function () {
+})(typeof window !== "undefined" ? window : this, function () {
   const GRADIENT_SPAN = 4096;          /* Photoshop stop locations run 0..4096 */
   const LINE_ART_INK_MAX = 90;         /* luminance of "ink" pixels, at most */
   const LINE_ART_PAPER_MIN = 215;      /* luminance of "paper" pixels, at least */
