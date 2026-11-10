@@ -26,9 +26,6 @@
     { "width": 23, "height": 23, "path": "icons/panel.png", "scale": [1, 2], "theme": ["darkest", "dark", "medium", "lightest", "light"], "species": ["generic"] }
   ],
   "requiredPermissions": {
-    "localFileSystem": "request",
-    "network": {
-      "domains": "all"
-    }
+    "localFileSystem": "request"
   }
 }
