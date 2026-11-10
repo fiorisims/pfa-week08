@@ -22,8 +22,19 @@
 
   function statusText() {
     const el = document.getElementById("status");
-    return el ? el.textContent : "";
+    const detail = document.getElementById("statusDetail");
+    return (el ? el.textContent : "") + (detail && detail.textContent ? " | " + detail.textContent.replace(/\n/g, " | ") : "");
   }
+  let pendingSave = null;
+  const realSave = lfs.getFileForSaving.bind(lfs);
+  lfs.getFileForSaving = async function (name, opts) {
+    if (pendingSave) {
+      const n = pendingSave; pendingSave = null;
+      const data = await lfs.getDataFolder();
+      return data.createFile(n, { overwrite: true });
+    }
+    return realSave(name, opts);
+  };
   function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
   async function waitIdle(maxMs) {
     const t0 = Date.now();
@@ -99,6 +110,9 @@
         pendingPick = [];
         for (const n of step.names) { pendingPick.push(await data.getEntry(n)); }
         out.value = pendingPick.length;
+      } else if (step.op === "saveTo") {
+        pendingSave = step.name;
+        out.value = step.name;
       } else if (step.op === "click") {
         const el = document.getElementById(step.id);
         if (!el) { throw new Error("no element " + step.id); }

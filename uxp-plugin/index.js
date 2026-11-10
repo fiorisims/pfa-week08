@@ -36,26 +36,11 @@ const GRADIENT_SUFFIX = " (gradient map)";
 const GRAY_CHROMA_MAX = 12;
 const GRAY_COLORED_FRACTION = 0.005;
 const GRAY_SAMPLE_TARGET = 4000;
-const EMOTIONS = {
-  happy: {
-    label: "Happy",
-    colors: [[74, 44, 107], [214, 69, 80], [247, 166, 58], [255, 232, 163]],
-  },
-  tense: {
-    label: "Tense",
-    colors: [[16, 20, 26], [61, 14, 20], [178, 34, 34], [242, 194, 48]],
-  },
-  sad: {
-    label: "Sad",
-    colors: [[21, 35, 59], [47, 74, 99], [110, 143, 168], [198, 214, 224]],
-  },
-  cautious: {
-    label: "Cautious",
-    colors: [[30, 42, 36], [63, 83, 72], [138, 144, 112], [211, 205, 180]],
-  },
-};
+/* The moods live in moods.js; custom and typed palettes are added at runtime. */
+const EMOTIONS = Object.assign({}, MOODS);
 const EMOTION_BUTTON_IDS = [
-  "btnEmoHappy", "btnEmoTense", "btnEmoSad", "btnEmoCautious", "btnEmotionClear",
+  "btnEmotionClear", "btnMoodWords", "btnMoodPicker", "btnMoodForeground", "btnReroll",
+  "btnApplyPalette", "btnReflow", "btnAddImages", "btnPanelsAll", "btnPanelsNone",
 ];
 const GRAY_HINT_DEFAULT =
   "Import one or more grayscale images, then choose a mood to add the same gradient map to all of them.";
@@ -116,19 +101,31 @@ const TEMPLATE_DPI = 150;
 const TEMPLATE_MARGIN = 120;
 const TEMPLATE_GAP = 40;
 const TEMPLATE_COLUMNS_DEFAULT = 3;
-const TEMPLATE_COLUMNS_MIN = 2;
-const TEMPLATE_COLUMNS_MAX = 5;
+const TEMPLATE_COLUMNS_MIN = 1;
+const TEMPLATE_COLUMNS_MAX = 8;
 const PANEL_PREFIX = "Panel ";
 
 /* ------------------------------------------------------------------ */
 /* small helpers                                                       */
 /* ------------------------------------------------------------------ */
 
+/* The status shows the first clause; the rest (after the first " | ") goes to
+ * the smaller detail line under it. */
 function setStatus(text, kind) {
   const el = document.getElementById("status");
+  const detail = document.getElementById("statusDetail");
   if (!el) { return; }
-  el.textContent = text;
+  const s = String(text == null ? "" : text);
+  const cut = s.indexOf(" | ");
+  el.textContent = cut >= 0 ? s.slice(0, cut) : s;
   el.className = kind || "";
+  if (detail) { detail.textContent = cut >= 0 ? s.slice(cut + 3).replace(/ \| /g, "\n") : ""; }
+}
+
+function statusText() {
+  const el = document.getElementById("status");
+  const detail = document.getElementById("statusDetail");
+  return (el ? el.textContent : "") + (detail && detail.textContent ? " | " + detail.textContent.replace(/\n/g, " | ") : "");
 }
 
 function to255(c) {
@@ -627,10 +624,12 @@ function planTemplate(entries, opts) {
   const columns = templateColumns(opts.columns);
   const list = (entries || []).filter(function (e) { return e; });
   if (!list.length) { throw new Error("no images to lay out"); }
+  const PW = opts.w || TEMPLATE_W;
+  const PH = opts.h || TEMPLATE_H;
 
   const rows = Math.max(1, Math.ceil(list.length / columns));
-  const innerW = TEMPLATE_W - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (columns - 1);
-  const innerH = TEMPLATE_H - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (rows - 1);
+  const innerW = PW - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (columns - 1);
+  const innerH = PH - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (rows - 1);
   const cellW = innerW / columns;
   const cellH = innerH / rows;
   const panels = [];
@@ -659,7 +658,7 @@ function planTemplate(entries, opts) {
   }
 
   return {
-    w: TEMPLATE_W, h: TEMPLATE_H, dpi: TEMPLATE_DPI,
+    w: PW, h: PH, dpi: TEMPLATE_DPI,
     doc_name: TEMPLATE_DOC_NAME,
     bg: [255, 255, 255],
     columns: columns, rows: rows,
@@ -1675,6 +1674,7 @@ function setEmotionBusy(busy) {
   if (tpl) { tpl.disabled = !!busy; }
   const refresh = document.getElementById("btnRefreshPanels");
   if (refresh) { refresh.disabled = !!busy; }
+  for (const b of document.querySelectorAll(".btn.mood")) { b.disabled = !!busy; }
   for (const node of panelChipNodes) {
     if (node.el) { node.el.disabled = !!busy; }
   }
@@ -1778,10 +1778,19 @@ function renderPanelPicker(doc, rows) {
     const block = document.createElement("div");
     block.className = "panel-row-block";
 
+    const head = document.createElement("div");
+    head.className = "panel-row-head";
     const label = document.createElement("div");
     label.className = "panel-row-label";
     label.textContent = "Row " + row.number;
-    block.appendChild(label);
+    head.appendChild(label);
+    const rowBtn = document.createElement("button");
+    rowBtn.type = "button";
+    rowBtn.className = "link-btn";
+    rowBtn.textContent = "Select row";
+    (function (n) { rowBtn.addEventListener("click", function () { pickRow(n); }); })(row.number);
+    head.appendChild(rowBtn);
+    block.appendChild(head);
 
     const grid = document.createElement("div");
     grid.className = "panel-grid";
@@ -1804,6 +1813,17 @@ function renderPanelPicker(doc, rows) {
       if (isSelected) { checkWrap.classList.add("on"); }
       checkWrap.addEventListener("click", function (e) {
         e.stopPropagation();
+        if (e.shiftKey && lastPickIndex !== null && lastPickIndex !== idx) {
+          // Shift+click: every panel between the last click and this one.
+          const lo = Math.min(lastPickIndex, idx), hi = Math.max(lastPickIndex, idx);
+          const range = [];
+          for (const r of rows) { for (const it of r.panels) { if (it.index >= lo && it.index <= hi) { range.push(it.index); } } }
+          const keep = panelPicks.filter(function (p) { return p.docId === doc.id; }).map(function (p) { return p.index; });
+          for (const n of range) { if (keep.indexOf(n) < 0) { keep.push(n); } }
+          setPanelPicks(doc, keep.sort(function (a, b) { return a - b; }));
+          return;
+        }
+        lastPickIndex = idx;
         const nowChecked = !checkWrap.classList.contains("on");
         if (nowChecked) { checkWrap.classList.add("on"); }
         else { checkWrap.classList.remove("on"); }
@@ -1916,13 +1936,10 @@ async function refreshTemplatePanels(opts) {
     return rows;
   }
 
-  const active = selectedPanel(doc);
-  if (active && !active.error) {
-    rememberPanelPick(doc, active.index, false);
-  } else if (!panelPicks.length || panelPicks[0].docId !== doc.id ||
-             !findRowForPanel(rows, panelPicks[0].index)) {
-    panelPicks = [{ docId: doc.id, index: rows[0].panels[0].index }];
-  }
+  // Keep picks that still exist in this document; never pre-select a panel silently.
+  panelPicks = panelPicks.filter(function (p) {
+    return p.docId === doc.id && !!findRowForPanel(rows, p.index);
+  });
 
   renderPanelPicker(doc, rows);
   applyPanelThumbCache();
@@ -2594,7 +2611,7 @@ async function applyRowEmotionTint(key, colors, ctx, row) {
 async function onEmotion(key) {
   const emo = EMOTIONS[key];
   if (!emo) { return; }
-  const colors = randomEmotionPalette(emo.colors, readColorRange());
+  const colors = paletteFor(key, emo);
   updateEmotionSwatches(colors);
 
   const activeDoc = app.documents.length ? app.activeDocument : null;
@@ -3291,11 +3308,17 @@ async function onBuildTemplate() {
           }
 
           setStatus("Planning " + entries.length + " panel(s)...");
-          const spec = planTemplate(entries, { columns: columns });
+          const preset = readPagePreset();
+          const spec = planTemplate(entries, { columns: columns, w: preset.w, h: preset.h });
 
           setStatus("Drawing template...");
           const doc = await createSheetDocument(spec, "RGBColorMode");
           let result = await buildTemplateSheet(spec, ctx, doc, { desaturate: readDesaturateOption() });
+          if (readCaptionsOption()) {
+            setStatus("Adding captions...");
+            await reflowTemplate(doc, { preset: preset, columns: columns, captions: true });
+            result += " | captions";
+          }
           if (failed.length) {
             result += " | skipped: " + failed.join(", ");
           }
@@ -3432,74 +3455,9 @@ window.addEventListener("load", () => {
     jsonBtn.addEventListener("click", onBuildJson);
   }
 
-  const importBtn = document.getElementById("btnImportGray");
-  if (importBtn) {
-    importBtn.addEventListener("click", onBuildTemplate);
-  }
-
-const emotionButtons = [
-    ["btnEmoHappy", "happy"],
-    ["btnEmoTense", "tense"],
-    ["btnEmoSad", "sad"],
-    ["btnEmoCautious", "cautious"],
-];
-for (const pair of emotionButtons) {
-    const b = document.getElementById(pair[0]);
-    if (b) {
-      b.addEventListener("click", function () { onEmotion(pair[1]); });
-    }
-}
-
   const clearBtn = document.getElementById("btnEmotionClear");
   if (clearBtn) {
     clearBtn.addEventListener("click", onClearEmotion);
-  }
-  const selectAllPanels = document.getElementById("optSelectAllPanels");
-  if (selectAllPanels) {
-    selectAllPanels.addEventListener("change", function () {
-      const doc = app.documents.length ? app.activeDocument : null;
-      const rows = doc ? panelRows(doc) : [];
-      if (!rows.length) { return; }
-      const allIndexes = [];
-      for (const row of rows) {
-        for (const item of row.panels) {
-          allIndexes.push(item.index);
-        }
-      }
-      if (selectAllPanels.checked) {
-        panelPicks = allIndexes.map(function (idx) {
-          return { docId: doc.id, index: idx };
-        });
-      } else {
-        panelPicks = [];
-      }
-      syncPanelPickerSelection(doc, null);
-      try {
-        core.executeAsModal(
-          async () => {
-            app.activeDocument = doc;
-            const layers = allIndexes
-              .map(function (idx) { return findPanelImage(doc, idx); })
-              .filter(function (l) { return !!l; });
-            if (selectAllPanels.checked && layers.length) {
-              await selectLayers(layers.map(function (l) { return l.id; }));
-            } else if (!selectAllPanels.checked) {
-              app.activeDocument.activeLayers = [];
-            }
-          },
-          { commandName: "Color Script: select all panels" }
-        );
-      } catch (e) {
-        console.error(e);
-      }
-      const count = selectAllPanels.checked ? allIndexes.length : 0;
-      setStatus(
-        count
-          ? "Selected all " + count + " panels. Choose a mood to color them."
-          : "Deselected all panels.",
-        "ok"
-      );
-    });
   }
 
   const refreshPanelsBtn = document.getElementById("btnRefreshPanels");
@@ -3543,6 +3501,8 @@ for (const pair of emotionButtons) {
   const bandsRow = document.getElementById("bandsCheck");
   if (bandsRow) { bandsRow.addEventListener("click", () => setTimeout(syncBands, 0)); }
   syncBands();
+
+  if (typeof initFeatures === "function") { initFeatures(); }
   const colorRange = document.getElementById("optColorRange");
   if (colorRange) {
     const out = document.getElementById("rangeOut");
