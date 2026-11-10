@@ -20,6 +20,7 @@
       body {
         font-family: "Segoe UI", "Adobe Clean", Tahoma, sans-serif;
         font-size: 12px;
+        --ui: 12px;
         line-height: 1.42;
         color: var(--ink);
         background-color: #8fd6ee;
@@ -154,7 +155,7 @@
 
       .hero h1 {
         margin: 0;
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 700;
         letter-spacing: 0.01em;
         color: #083a58;
@@ -266,11 +267,11 @@
 
       h2 {
         margin: 0;
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 700;
-        letter-spacing: 0.09em;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #245f7a;
+        color: var(--title, #245f7a);
       }
 
       .row {
@@ -675,37 +676,188 @@
         background: linear-gradient(180deg, #a9e6fb, #39b2dc);
       }
 
+      /* text size setting */
+      body[data-size="large"] { --ui: 14px; font-size: 14px; }
+      body[data-size="large"] h2 { font-size: 15px; }
+      body[data-size="large"] .hero h1 { font-size: 21px; }
+      body[data-size="large"] .btn, body[data-size="large"] .field, body[data-size="large"] .label,
+      body[data-size="large"] .check, body[data-size="large"] .hint, body[data-size="large"] .help p,
+      body[data-size="large"] #status, body[data-size="large"] .panel-summary { font-size: 13.5px; }
+      body[data-size="small"] { --ui: 11px; font-size: 11px; }
+      body[data-size="small"] h2 { font-size: 11.5px; }
+      body[data-size="small"] .hero h1 { font-size: 16px; }
+
+      /* tabs */
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin: 0 0 10px;
+        padding: 3px;
+        border-radius: 11px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.4);
+      }
+      .tab {
+        flex: 1 1 0;
+        padding: 6px 4px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--ink-soft);
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .tab.on {
+        border-color: rgba(255, 255, 255, 0.9);
+        background: linear-gradient(180deg, #ffffff 0%, #d9f4ff 45%, #9fdcf4 55%, #6dc6e8 100%);
+        color: #0a3d57;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+      }
+      .page[hidden] { display: none; }
+
+      .mood-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+      .btn.mood { flex: 1 1 30%; min-width: 72px; }
+      .btn.mood.on { box-shadow: 0 0 0 2px rgba(31, 184, 148, 0.6), inset 0 1px 0 #ffffff; }
+      .emo-swatches div { cursor: pointer; }
+      .emo-swatches div:hover { outline: 2px solid #ffffff; outline-offset: -2px; }
+      .btn.half { flex: 1 1 45%; width: auto; }
+      .row.actions { gap: 6px; }
+      #statusDetail {
+        margin: -6px 0 10px;
+        padding: 0 9px;
+        font-size: 10.5px;
+        color: var(--ink-soft);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #statusDetail:empty { display: none; }
+      .panel-row-head { display: flex; align-items: center; justify-content: space-between; }
+      .link-btn {
+        border: none; background: none; padding: 0; margin: 0;
+        color: #1f7fa6; font-family: inherit; font-size: 10px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer;
+      }
+      .link-btn:hover { text-decoration: underline; }
+      select.field { padding-right: 4px; }
+
+      /* "Match Photoshop" themes: only the surfaces change; the layout stays. */
+      body[data-theme="ps-dark"], body[data-theme="ps-darkest"], body[data-theme="ps-light"], body[data-theme="ps-lightest"] {
+        background: var(--bg);
+        color: var(--ink);
+        --ink-soft: var(--soft);
+        --line: var(--edge);
+        --glass: var(--card);
+        --glass-edge: var(--edge);
+        --title: var(--ink);
+      }
+      body[data-theme="ps-dark"] { --bg: #323232; --card: #3b3b3b; --edge: #4a4a4a; --ink: #e6e6e6; --soft: #b0b0b0; --field: #262626; --btn: #4e4e4e; --btn-hi: #5c5c5c; --cta: #2680eb; }
+      body[data-theme="ps-darkest"] { --bg: #1e1e1e; --card: #262626; --edge: #3a3a3a; --ink: #e0e0e0; --soft: #a0a0a0; --field: #161616; --btn: #3a3a3a; --btn-hi: #474747; --cta: #2680eb; }
+      body[data-theme="ps-light"] { --bg: #b8b8b8; --card: #c9c9c9; --edge: #a8a8a8; --ink: #1c1c1c; --soft: #444444; --field: #e4e4e4; --btn: #d6d6d6; --btn-hi: #e2e2e2; --cta: #1473e6; }
+      body[data-theme="ps-lightest"] { --bg: #f0f0f0; --card: #fafafa; --edge: #d0d0d0; --ink: #1c1c1c; --soft: #555555; --field: #ffffff; --btn: #e6e6e6; --btn-hi: #f0f0f0; --cta: #1473e6; }
+      body[data-theme^="ps-"]::before { background: none; }
+      body[data-theme^="ps-"] .hero, body[data-theme^="ps-"] .card, body[data-theme^="ps-"] .help,
+      body[data-theme^="ps-"] #status, body[data-theme^="ps-"] .tabs, body[data-theme^="ps-"] .scroll-nav {
+        background: var(--card); border-color: var(--edge); box-shadow: none; color: var(--ink);
+      }
+      body[data-theme^="ps-"] .card::after { display: none; }
+      body[data-theme^="ps-"] .hero h1, body[data-theme^="ps-"] .help-title, body[data-theme^="ps-"] .panel-num,
+      body[data-theme^="ps-"] .check, body[data-theme^="ps-"] .panel-chip { color: var(--ink); text-shadow: none; }
+      body[data-theme^="ps-"] .hero p, body[data-theme^="ps-"] .hint, body[data-theme^="ps-"] .help p,
+      body[data-theme^="ps-"] .label, body[data-theme^="ps-"] .panel-name, body[data-theme^="ps-"] .panel-row-label,
+      body[data-theme^="ps-"] .strength-val, body[data-theme^="ps-"] .panel-summary { color: var(--soft); }
+      body[data-theme^="ps-"] .btn, body[data-theme^="ps-"] .tab, body[data-theme^="ps-"] .scroll-btn, body[data-theme^="ps-"] .panel-chip {
+        background: var(--btn); border-color: var(--edge); color: var(--ink); text-shadow: none; box-shadow: none;
+      }
+      body[data-theme^="ps-"] .btn:hover, body[data-theme^="ps-"] .panel-chip:hover { background: var(--btn-hi); }
+      body[data-theme^="ps-"] .btn.cta, body[data-theme^="ps-"] .tab.on { background: var(--cta); color: #ffffff; border-color: var(--cta); }
+      body[data-theme^="ps-"] .btn.mood { color: #111111; text-shadow: 0 1px 0 rgba(255,255,255,0.4); }
+      body[data-theme^="ps-"] .field { background: var(--field); border-color: var(--edge); color: var(--ink); box-shadow: none; }
+      body[data-theme^="ps-"] .check .box { background: var(--field); border-color: var(--edge); box-shadow: none; }
+      body[data-theme^="ps-"] .check.on .box { background: var(--cta); border-color: var(--cta); }
+      body[data-theme^="ps-"] .panel-chip.on { border-color: var(--cta); box-shadow: 0 0 0 2px var(--cta); }
+      body[data-theme^="ps-"] .orb { background: var(--cta); border-color: var(--cta); box-shadow: none; }
+      body[data-theme^="ps-"] .dot { background: var(--cta); box-shadow: none; }
+      body[data-theme^="ps-"] .progress { background: var(--field); border-color: var(--edge); }
+      body[data-theme^="ps-"] ::-webkit-scrollbar-thumb { background: var(--btn); border-color: var(--edge); }
+      body[data-theme^="ps-"] #status.ok { color: #7bd88f; } body[data-theme^="ps-"] #status.err { color: #ff8a80; }
+
       @media (max-width: 320px) {
         .label { min-width: 100%; }
         .field.num { width: 70px; }
       }
     </style>
   </head>
-  <body>
+  <body data-theme="aero" data-size="normal">
     <div id="scroll">
     <header class="hero">
       <div class="orb">CS</div>
       <div>
         <h1>Color Script</h1>
-        <p>Grayscale panels &middot; palettes &middot; mood tints</p>
+        <p>Panels &middot; moods &middot; palettes</p>
       </div>
     </header>
 
     <div id="progress" class="progress" style="display: none;"><div class="progress-bar"></div></div>
     <div id="status">Ready.</div>
+    <div id="statusDetail"></div>
 
+    <div class="tabs" role="tablist">
+      <button id="tabScript" class="tab on" type="button" data-page="pageScript">Color script</button>
+      <button id="tabSheet" class="tab" type="button" data-page="pageSheet">Palette sheet</button>
+      <button id="tabSettings" class="tab" type="button" data-page="pageSettings">Settings</button>
+    </div>
+
+    <div id="pageScript" class="page">
     <section class="card">
       <div class="card-head"><span class="dot"></span><h2>Color script template</h2></div>
       <div class="row tight">
-        <span class="label">Columns (2-5)</span>
-        <input id="optTemplateCols" class="field num" type="number" min="2" max="5" step="1" placeholder="3" value="3" />
+        <span class="label">Page</span>
+        <select id="optPagePreset" class="field grow">
+          <option value="tabloid-landscape" selected>11 x 17 in landscape (2550 x 1650)</option>
+          <option value="tabloid-portrait">11 x 17 in portrait (1650 x 2550)</option>
+          <option value="hd">16:9 HD (1920 x 1080)</option>
+          <option value="a3-landscape">A3 landscape (2480 x 1754)</option>
+          <option value="square">Square (2000 x 2000)</option>
+        </select>
+      </div>
+      <div class="row tight">
+        <span class="label">Columns (1-8)</span>
+        <input id="optTemplateCols" class="field num" type="number" min="1" max="8" step="1" placeholder="3" value="3" />
+      </div>
+      <div class="row tight">
+        <div id="desaturateCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optDesaturate" type="checkbox" />
+          <span class="box"></span>
+          <span>Desaturate panels on import</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <div id="keepPsdCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optKeepPsd" type="checkbox" />
+          <span class="box"></span>
+          <span>Keep the layers of PSD files (as a panel group)</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <div id="captionsCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optCaptions" type="checkbox" />
+          <span class="box"></span>
+          <span>Caption each panel with its file name</span>
+        </div>
       </div>
       <div class="row">
         <button id="btnTemplate" class="btn cta" type="button">Build Template...</button>
       </div>
+      <div class="row actions">
+        <button id="btnAddImages" class="btn half" type="button">Add images...</button>
+        <button id="btnReflow" class="btn half" type="button">Re-flow panels</button>
+      </div>
       <p class="hint">
-        Lays out the chosen images in an 11x17 panel grid with no swatches, labels or title.
-        Click a panel thumbnail, then pick a mood to color it.
+        Lays out the chosen images as a panel grid. Colour images keep their colour unless you tick
+        Desaturate. Add images appends panels; Re-flow re-lays every panel with the page and column
+        settings above.
       </p>
     </section>
 
@@ -713,15 +865,117 @@
       <div class="card-head"><span class="dot"></span><h2>Template panels</h2></div>
       <div class="row tight">
         <span id="panelSummary" class="panel-summary">No template panels found.</span>
+        <button id="btnPanelsAll" class="btn small" type="button">All</button>
+        <button id="btnPanelsNone" class="btn small" type="button">None</button>
         <button id="btnRefreshPanels" class="btn small" type="button">Refresh</button>
       </div>
       <div id="panelList" class="panel-list"></div>
       <p class="hint">
-        Check the box next to a panel to select it for coloring. Click the panel to select
-        in Photoshop. The Layers panel selection also works.
+        Tick the panels to colour (Shift+click a panel for a range, Row selects a whole row), then
+        pick a mood below. The Layers panel selection also works.
       </p>
     </section>
 
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>Mood</h2></div>
+      <div id="moodGrid" class="mood-grid"></div>
+      <div class="row tight">
+        <input id="optMoodWords" class="field grow" type="text" placeholder="or describe it: eerie dawn, muted" />
+        <button id="btnMoodWords" class="btn small" type="button">Apply words</button>
+      </div>
+      <div class="row actions">
+        <button id="btnMoodPicker" class="btn half" type="button">From colour picker...</button>
+        <button id="btnMoodForeground" class="btn half" type="button">From foreground colour</button>
+      </div>
+      <div id="emoSwatches" class="emo-swatches" title="Click a swatch to replace that stop with the foreground colour">
+        <div></div><div></div><div></div><div></div>
+      </div>
+      <p id="paletteNote" class="hint">Pick a mood. Each click rolls a fresh variation of that mood.</p>
+      <div class="row actions">
+        <button id="btnReroll" class="btn half" type="button">Reroll</button>
+        <button id="btnApplyPalette" class="btn half" type="button">Apply this palette</button>
+      </div>
+      <div class="row tight">
+        <div id="lockCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optLockPalette" type="checkbox" />
+          <span class="box"></span>
+          <span>Lock palette (reuse it on every panel)</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <div id="gradientCheck" class="check" role="checkbox" aria-checked="true" tabindex="0">
+          <input id="optGradientMap" type="checkbox" checked />
+          <span class="box"></span>
+          <span>Gradient map for grayscale panels</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <div id="fillPaperCheck" class="check" role="checkbox" aria-checked="true" tabindex="0">
+          <input id="optFillPaper" type="checkbox" checked />
+          <span class="box"></span>
+          <span>Line art: fill the paper too</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <div id="bandsCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optBands" type="checkbox" />
+          <span class="box"></span>
+          <span>Split into shadows / midtones / highlights</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <div id="rowCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optEmotionRow" type="checkbox" />
+          <span class="box"></span>
+          <span>Row variations (drift the hue across the row)</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <span class="label">Strength</span>
+        <input id="optEmotionStrength" class="slider" type="range" min="0" max="100" step="1" value="100" />
+        <span id="strengthOut" class="strength-val">100%</span>
+      </div>
+      <div id="bandRows" hidden>
+        <div class="row tight">
+          <span class="label">Shadows</span>
+          <input id="optBandShadows" class="slider" type="range" min="0" max="100" step="1" value="100" />
+          <span id="optBandShadowsOut" class="strength-val">100%</span>
+        </div>
+        <div class="row tight">
+          <span class="label">Midtones</span>
+          <input id="optBandMidtones" class="slider" type="range" min="0" max="100" step="1" value="100" />
+          <span id="optBandMidtonesOut" class="strength-val">100%</span>
+        </div>
+        <div class="row tight">
+          <span class="label">Highlights</span>
+          <input id="optBandHighlights" class="slider" type="range" min="0" max="100" step="1" value="100" />
+          <span id="optBandHighlightsOut" class="strength-val">100%</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <span class="label">Color range</span>
+        <input id="optColorRange" class="slider" type="range" min="0" max="200" step="1" value="100" />
+        <span id="rangeOut" class="strength-val">100%</span>
+      </div>
+      <div class="row">
+        <button id="btnEmotionClear" class="btn" type="button">Clear emotion tint</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>Export</h2></div>
+      <div class="row actions">
+        <button id="btnExportPng" class="btn half" type="button">Save PNG...</button>
+        <button id="btnExportJpg" class="btn half" type="button">Save JPEG...</button>
+      </div>
+      <div class="row actions">
+        <button id="btnExportAco" class="btn half" type="button">Save palette .aco...</button>
+        <button id="btnCopyHex" class="btn half" type="button">Copy hex codes</button>
+      </div>
+    </section>
+    </div>
+
+    <div id="pageSheet" class="page" hidden>
     <section class="card">
       <div class="card-head"><span class="dot"></span><h2>Palette sheet</h2></div>
       <div class="row">
@@ -745,74 +999,64 @@
       <div class="row">
         <button id="btnBuild" class="btn" type="button">Build from layout JSON...</button>
       </div>
-    </section>
-
-    <section class="card">
-      <div class="card-head"><span class="dot"></span><h2>Emotion color</h2></div>
-      <div class="row">
-        <button id="btnImportGray" class="btn cta" type="button">Build Template...</button>
-      </div>
-      <p id="grayHint" class="hint">
-        Build a grayscale template from one or more images, then choose a mood below to
-        color it. Shift+click panels to select multiple.
+      <p class="hint">
+        Extracts the dominant colours of each image (k-means) and draws a palette sheet with
+        swatches, hex labels and gradient strips in a new document.
       </p>
-      <div class="row emotion-buttons">
-        <button id="btnEmoHappy" class="btn mood mood-happy" type="button">Happy</button>
-        <button id="btnEmoTense" class="btn mood mood-tense" type="button">Tense</button>
-        <button id="btnEmoSad" class="btn mood mood-sad" type="button">Sad</button>
-        <button id="btnEmoCautious" class="btn mood mood-cautious" type="button">Cautious</button>
-      </div>
-      <div id="emoSwatches" class="emo-swatches">
-        <div></div><div></div><div></div><div></div>
+    </section>
+    </div>
+
+    <div id="pageSettings" class="page" hidden>
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>Look</h2></div>
+      <div class="row tight">
+        <span class="label">Theme</span>
+        <select id="optTheme" class="field grow">
+          <option value="aero" selected>Frutiger Aero (default)</option>
+          <option value="match">Match Photoshop</option>
+          <option value="ps-darkest">Photoshop darkest</option>
+          <option value="ps-dark">Photoshop dark</option>
+          <option value="ps-light">Photoshop light</option>
+          <option value="ps-lightest">Photoshop lightest</option>
+        </select>
       </div>
       <div class="row tight">
-<div id="gradientCheck" class="check" role="checkbox" aria-checked="true" tabindex="0">
-        <input id="optGradientMap" type="checkbox" checked />
-        <span class="box"></span>
-        <span>Gradient map for grayscale</span>
+        <span class="label">Text size</span>
+        <select id="optTextSize" class="field grow">
+          <option value="small">Small</option>
+          <option value="normal" selected>Normal</option>
+          <option value="large">Large</option>
+        </select>
       </div>
-      <div class="row tight">
-<div id="rowCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
-        <input id="optEmotionRow" type="checkbox" />
-        <span class="box"></span>
-        <span>Whole row, slight variations</span>
-      </div>
-      </div>
-      <div class="row tight">
-        <span class="label">Strength</span>
-        <input id="optEmotionStrength" class="slider" type="range" min="10" max="100" step="1" value="100" />
-        <span id="strengthOut" class="strength-val">100%</span>
-      </div>
-      <div class="row tight">
-        <span class="label">Color range</span>
-        <input id="optColorRange" class="slider" type="range" min="0" max="200" step="1" value="100" />
-        <span id="rangeOut" class="strength-val">100%</span>
-      </div>
-      <div class="row">
-        <button id="btnEmotionClear" class="btn" type="button">Clear emotion tint</button>
-      </div>
+    </section>
+    <section class="card">
+      <div class="card-head"><span class="dot"></span><h2>How it works</h2></div>
       <div class="help">
-        <div class="help-title">How it works</div>
         <p>
-          In a color script template, click a panel thumbnail (or select a panel layer) and pick a
-          mood. Each click makes a new palette and clicking the same panel's overlay rerolls it.
-          With "Whole row, slight variations" ticked, the mood covers every panel in that row with
-          a gentle left-to-right hue drift, all in one undo step. Strength adjusts the whole row
-          while row mode is on. Import grayscale images opens a multi-select file picker and waits
-          for a mood: that click adds the same gradient map (one palette) to every imported image.
-          Pick another mood to reroll them all. Without a template or import, a mood tints the
-          active document.
-          With Gradient map checked a grayscale image is replaced by that ramp, otherwise a
-          non-destructive Color layer tints it. Drag Strength to adjust, or Clear to remove.
+          Build Template places your images as panels on one page. Tick panels, then pick a mood:
+          each panel gets its own Gradient Map adjustment layer, clipped to that panel, so you can
+          edit the stops in Properties or change the blend later. Strength is the layer's opacity
+          and moves while you drag. Colour panels get a Color-blend map that keeps their light and
+          shadow; grayscale panels get a full gradient map; line art maps the ink to the shadow
+          colour and the paper to the light colour. Split into bands writes three maps per panel
+          (shadows, midtones, highlights) with their own strength. Describe a mood in words and
+          the panel blends the moods it recognises; the status line says what it understood.
+          Lock palette reuses one palette across panels; Reroll makes another variation.
         </p>
       </div>
+      <p class="hint" id="versionNote"></p>
     </section>
+    </div>
 
     </div>
     <div id="scrollNav" class="scroll-nav" style="display: none;">
       <button id="scrollUp" class="scroll-btn" type="button" title="Scroll up" aria-label="Scroll up">&#9650;</button>
       <button id="scrollDown" class="scroll-btn" type="button" title="Scroll down" aria-label="Scroll down">&#9660;</button>
     </div>
+    <script src="gradientmap.js"></script>
+    <script src="moods.js"></script>
     <script src="index.js"></script>
+    <script src="features.js"></script>
+    <script src="autotest.js"></script>
   </body>
 </html>

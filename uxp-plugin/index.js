@@ -36,26 +36,11 @@ const GRADIENT_SUFFIX = " (gradient map)";
 const GRAY_CHROMA_MAX = 12;
 const GRAY_COLORED_FRACTION = 0.005;
 const GRAY_SAMPLE_TARGET = 4000;
-const EMOTIONS = {
-  happy: {
-    label: "Happy",
-    colors: [[74, 44, 107], [214, 69, 80], [247, 166, 58], [255, 232, 163]],
-  },
-  tense: {
-    label: "Tense",
-    colors: [[16, 20, 26], [61, 14, 20], [178, 34, 34], [242, 194, 48]],
-  },
-  sad: {
-    label: "Sad",
-    colors: [[21, 35, 59], [47, 74, 99], [110, 143, 168], [198, 214, 224]],
-  },
-  cautious: {
-    label: "Cautious",
-    colors: [[30, 42, 36], [63, 83, 72], [138, 144, 112], [211, 205, 180]],
-  },
-};
+/* The moods live in moods.js; custom and typed palettes are added at runtime. */
+const EMOTIONS = Object.assign({}, MOODS);
 const EMOTION_BUTTON_IDS = [
-  "btnEmoHappy", "btnEmoTense", "btnEmoSad", "btnEmoCautious", "btnEmotionClear",
+  "btnEmotionClear", "btnMoodWords", "btnMoodPicker", "btnMoodForeground", "btnReroll",
+  "btnApplyPalette", "btnReflow", "btnAddImages", "btnPanelsAll", "btnPanelsNone",
 ];
 const GRAY_HINT_DEFAULT =
   "Import one or more grayscale images, then choose a mood to add the same gradient map to all of them.";
@@ -116,19 +101,31 @@ const TEMPLATE_DPI = 150;
 const TEMPLATE_MARGIN = 120;
 const TEMPLATE_GAP = 40;
 const TEMPLATE_COLUMNS_DEFAULT = 3;
-const TEMPLATE_COLUMNS_MIN = 2;
-const TEMPLATE_COLUMNS_MAX = 5;
+const TEMPLATE_COLUMNS_MIN = 1;
+const TEMPLATE_COLUMNS_MAX = 8;
 const PANEL_PREFIX = "Panel ";
 
 /* ------------------------------------------------------------------ */
 /* small helpers                                                       */
 /* ------------------------------------------------------------------ */
 
+/* The status shows the first clause; the rest (after the first " | ") goes to
+ * the smaller detail line under it. */
 function setStatus(text, kind) {
   const el = document.getElementById("status");
+  const detail = document.getElementById("statusDetail");
   if (!el) { return; }
-  el.textContent = text;
+  const s = String(text == null ? "" : text);
+  const cut = s.indexOf(" | ");
+  el.textContent = cut >= 0 ? s.slice(0, cut) : s;
   el.className = kind || "";
+  if (detail) { detail.textContent = cut >= 0 ? s.slice(cut + 3).replace(/ \| /g, "\n") : ""; }
+}
+
+function statusText() {
+  const el = document.getElementById("status");
+  const detail = document.getElementById("statusDetail");
+  return (el ? el.textContent : "") + (detail && detail.textContent ? " | " + detail.textContent.replace(/\n/g, " | ") : "");
 }
 
 function to255(c) {
@@ -617,7 +614,7 @@ function panelNumberFromName(name) {
   const s = String(name || "");
   let m = /^Panel (\d+)(?: - .*)?$/.exec(s);
   if (m) { return parseInt(m[1], 10); }
-  m = /^Emotion tint .* - Panel (\d+)$/.exec(s);
+  m = /^Emotion tint .* - Panel (\d+)(?: - [A-Za-z]+)?$/.exec(s);
   if (m) { return parseInt(m[1], 10); }
   return null;
 }
@@ -627,10 +624,12 @@ function planTemplate(entries, opts) {
   const columns = templateColumns(opts.columns);
   const list = (entries || []).filter(function (e) { return e; });
   if (!list.length) { throw new Error("no images to lay out"); }
+  const PW = opts.w || TEMPLATE_W;
+  const PH = opts.h || TEMPLATE_H;
 
   const rows = Math.max(1, Math.ceil(list.length / columns));
-  const innerW = TEMPLATE_W - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (columns - 1);
-  const innerH = TEMPLATE_H - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (rows - 1);
+  const innerW = PW - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (columns - 1);
+  const innerH = PH - TEMPLATE_MARGIN * 2 - TEMPLATE_GAP * (rows - 1);
   const cellW = innerW / columns;
   const cellH = innerH / rows;
   const panels = [];
@@ -659,7 +658,7 @@ function planTemplate(entries, opts) {
   }
 
   return {
-    w: TEMPLATE_W, h: TEMPLATE_H, dpi: TEMPLATE_DPI,
+    w: PW, h: PH, dpi: TEMPLATE_DPI,
     doc_name: TEMPLATE_DOC_NAME,
     bg: [255, 255, 255],
     columns: columns, rows: rows,
@@ -948,6 +947,17 @@ async function rasterizeLayer(id) {
   }
 }
 
+/* Remove the colour from one pixel layer (Image > Adjustments > Desaturate). */
+async function desaturateLayer(id) {
+  await selectLayer(id);
+  await action.batchPlay([{ _obj: "desaturate" }], {});
+}
+
+function readDesaturateOption() {
+  const el = document.getElementById("optDesaturate");
+  return !!(el && el.checked);
+}
+
 async function addText(contents, x, y, sizePx, color, bold, centered, name) {
   const doc = app.activeDocument;
   const ptSize = (sizePx * 72) / (doc.resolution || DPI_DEFAULT);
@@ -1189,6 +1199,68 @@ async function placePng(path, x, y, w, h, name, entry) {
   }
   if (name) { try { await renameLayer(id, name); } catch (e) {} }
   return id;
+}
+
+
+/* Place a layered PSD/PSB as a group named like a panel, keeping its layers.
+   The group is scaled and moved to fit (x, y, w, h) like a flat panel. */
+async function placePsdLayers(entry, x, y, w, h, name) {
+  const target = app.activeDocument;
+  const nativePath = entry.nativePath || String(entry);
+  let src = null, opened = false;
+  for (let i = 0; i < app.documents.length; i++) {
+    if (sameDocPath(app.documents[i], nativePath)) { src = app.documents[i]; break; }
+  }
+  if (!src) { src = await app.open(entry); opened = true; }
+  try {
+    app.activeDocument = target;
+    const group = await target.createLayerGroup({ name: name || "Panel" });
+    const copied = [];
+    const srcLayers = src.layers.slice();
+    for (let i = srcLayers.length - 1; i >= 0; i--) {
+      const l = srcLayers[i];
+      try {
+        app.activeDocument = src;
+        const dup = await l.duplicate(target, constants.ElementPlacement.PLACEATBEGINNING);
+        app.activeDocument = target;
+        try { await dup.move(group, constants.ElementPlacement.PLACEINSIDE); } catch (e) { console.error(e); }
+        copied.push(dup);
+      } catch (e) { console.error("PSD layer " + l.name + " skipped:", e); }
+    }
+    app.activeDocument = target;
+    // Drop any empty pixel layer Photoshop left inside the new group.
+    for (const child of (group.layers || []).slice()) {
+      try {
+        const cb = child.boundsNoEffects || child.bounds;
+        if (child.kind === "pixel" && cb && Number(cb.right) - Number(cb.left) <= 0 && copied.indexOf(child) < 0) { await child.delete(); }
+      } catch (e) { /* ignore */ }
+    }
+    const b = group.boundsNoEffects || group.bounds;
+    const cw = Number(b.right) - Number(b.left), ch = Number(b.bottom) - Number(b.top);
+    if (w && h && cw > 0 && ch > 0) {
+      const scale = Math.min(w / cw, h / ch);
+      target.activeLayers = [group];
+      await group.scale(scale * 100, scale * 100, constants.AnchorPosition.TOPLEFT);
+      const b2 = group.boundsNoEffects || group.bounds;
+      const dx = (x || 0) - Number(b2.left), dy = (y || 0) - Number(b2.top);
+      if (dx || dy) { await group.translate(dx, dy); }
+    }
+    return { id: group.id, layers: copied.length };
+  } finally {
+    if (opened) {
+      try { app.activeDocument = src; await src.close(constants.SaveOptions.DONOTSAVECHANGES); } catch (e) { console.error(e); }
+    }
+    try { app.activeDocument = target; } catch (e) { /* ignore */ }
+  }
+}
+
+function isLayeredSource(entry) {
+  return /\.(psd|psb)$/i.test(String((entry && entry.name) || entry || ""));
+}
+
+function readKeepPsdOption() {
+  const el = document.getElementById("optKeepPsd");
+  return !!(el && el.checked);
 }
 
 /* Paint a gradient strip straight into a pixel layer. */
@@ -1628,7 +1700,7 @@ function readStrength() {
   const el = document.getElementById("optEmotionStrength");
   let v = el ? parseInt(el.value, 10) : 100;
   if (!isFinite(v)) { v = 100; }
-  return Math.max(10, Math.min(100, v));
+  return Math.max(0, Math.min(100, v));
 }
 
 function readColorRange() {
@@ -1664,6 +1736,7 @@ function setEmotionBusy(busy) {
   if (tpl) { tpl.disabled = !!busy; }
   const refresh = document.getElementById("btnRefreshPanels");
   if (refresh) { refresh.disabled = !!busy; }
+  for (const b of document.querySelectorAll(".btn.mood")) { b.disabled = !!busy; }
   for (const node of panelChipNodes) {
     if (node.el) { node.el.disabled = !!busy; }
   }
@@ -1708,9 +1781,8 @@ async function loadPanelThumbnails(doc, items) {
             const w = Math.max(1, Number(b.right) - Number(b.left));
             const h = Math.max(1, Number(b.bottom) - Number(b.top));
             const scale = Math.min(PANEL_THUMB_W / w, PANEL_THUMB_H / h, 1);
-            const result = await imaging.getPixels({
+            const req = {
               documentID: doc.id,
-              layerID: item.layer.id,
               targetSize: {
                 width: Math.max(1, Math.round(w * scale)),
                 height: Math.max(1, Math.round(h * scale)),
@@ -1718,16 +1790,24 @@ async function loadPanelThumbnails(doc, items) {
               componentSize: 8,
               colorSpace: "RGB",
               applyAlpha: true,
-            });
+            };
+            if (item.layer.kind === "group" || (item.layer.layers && item.layer.layers.length)) {
+              req.sourceBounds = { left: Math.round(Number(b.left)), top: Math.round(Number(b.top)),
+                right: Math.round(Number(b.right)), bottom: Math.round(Number(b.bottom)) };
+            } else {
+              req.layerID = item.layer.id;
+            }
+            const result = await imaging.getPixels(req);
             imageData = result.imageData;
-            const jpeg = await imaging.encodeImageData({
-              imageData: imageData,
-              base64: true,
-            });
-            updates.push({
-              key: panelThumbKey(doc, item.layer),
-              url: "data:image/jpeg;base64," + jpeg,
-            });
+            let url;
+            try {
+              const jpeg = await imaging.encodeImageData({ imageData: imageData, base64: true });
+              url = "data:image/jpeg;base64," + jpeg;
+            } catch (e) {
+              const png = await imaging.encodeImageData({ imageData: imageData, base64: true, format: "png" });
+              url = "data:image/png;base64," + png;
+            }
+            updates.push({ key: panelThumbKey(doc, item.layer), url: url });
           } catch (e) {
             console.error("Panel thumbnail failed for Panel " +
               panelLabel(item.index) + ":", e);
@@ -1767,10 +1847,19 @@ function renderPanelPicker(doc, rows) {
     const block = document.createElement("div");
     block.className = "panel-row-block";
 
+    const head = document.createElement("div");
+    head.className = "panel-row-head";
     const label = document.createElement("div");
     label.className = "panel-row-label";
     label.textContent = "Row " + row.number;
-    block.appendChild(label);
+    head.appendChild(label);
+    const rowBtn = document.createElement("button");
+    rowBtn.type = "button";
+    rowBtn.className = "link-btn";
+    rowBtn.textContent = "Select row";
+    (function (n) { rowBtn.addEventListener("click", function () { pickRow(n); }); })(row.number);
+    head.appendChild(rowBtn);
+    block.appendChild(head);
 
     const grid = document.createElement("div");
     grid.className = "panel-grid";
@@ -1793,6 +1882,17 @@ function renderPanelPicker(doc, rows) {
       if (isSelected) { checkWrap.classList.add("on"); }
       checkWrap.addEventListener("click", function (e) {
         e.stopPropagation();
+        if (e.shiftKey && lastPickIndex !== null && lastPickIndex !== idx) {
+          // Shift+click: every panel between the last click and this one.
+          const lo = Math.min(lastPickIndex, idx), hi = Math.max(lastPickIndex, idx);
+          const range = [];
+          for (const r of rows) { for (const it of r.panels) { if (it.index >= lo && it.index <= hi) { range.push(it.index); } } }
+          const keep = panelPicks.filter(function (p) { return p.docId === doc.id; }).map(function (p) { return p.index; });
+          for (const n of range) { if (keep.indexOf(n) < 0) { keep.push(n); } }
+          setPanelPicks(doc, keep.sort(function (a, b) { return a - b; }));
+          return;
+        }
+        lastPickIndex = idx;
         const nowChecked = !checkWrap.classList.contains("on");
         if (nowChecked) { checkWrap.classList.add("on"); }
         else { checkWrap.classList.remove("on"); }
@@ -1855,6 +1955,12 @@ function renderPanelPicker(doc, rows) {
       const img = document.createElement("img");
       img.className = "panel-thumb-img";
       img.style.display = "none";
+      // A thumbnail that fails to decode shows the panel number, never a broken icon.
+      img.addEventListener("error", function () {
+        img.style.display = "none";
+        img.removeAttribute("src");
+        delete panelThumbCache[key];
+      });
       if (panelThumbCache[key]) {
         img.src = panelThumbCache[key];
         img.style.display = "block";
@@ -1905,13 +2011,10 @@ async function refreshTemplatePanels(opts) {
     return rows;
   }
 
-  const active = selectedPanel(doc);
-  if (active && !active.error) {
-    rememberPanelPick(doc, active.index, false);
-  } else if (!panelPicks.length || panelPicks[0].docId !== doc.id ||
-             !findRowForPanel(rows, panelPicks[0].index)) {
-    panelPicks = [{ docId: doc.id, index: rows[0].panels[0].index }];
-  }
+  // Keep picks that still exist in this document; never pre-select a panel silently.
+  panelPicks = panelPicks.filter(function (p) {
+    return p.docId === doc.id && !!findRowForPanel(rows, p.index);
+  });
 
   renderPanelPicker(doc, rows);
   applyPanelThumbCache();
@@ -2250,13 +2353,7 @@ async function applyEmotionTint(key, colors, ctx, opts) {
 
   try {
     app.activeDocument = doc;
-    if (doc.mode === "bitmapMode" || doc.mode === "duotoneMode") {
-      await doc.changeMode("grayscaleMode");
-    }
-    if (doc.mode !== "RGBColorMode") {
-      await doc.changeMode("RGBColorMode");
-    }
-
+    await prepareTintDocument(doc);
     const removed = await removeTintLayers(doc);
 
     const W = Math.round(Number(doc.width));
@@ -2264,85 +2361,31 @@ async function applyEmotionTint(key, colors, ctx, opts) {
     if (!(W > 0 && H > 0)) {
       throw new Error("The document has no pixels.");
     }
-
-    let tw = W, th = H;
-    if (W * H > TINT_MAX_PIXELS) {
-      const s = Math.sqrt(TINT_MAX_PIXELS / (W * H));
-      tw = Math.max(1, Math.round(W * s));
-      th = Math.max(1, Math.round(H * s));
-    }
-
-    const result = await imaging.getPixels({
-      documentID: doc.id,
-      targetSize: { width: tw, height: th },
-      componentSize: 8,
-      colorSpace: "RGB",
-    });
-    const imageData = result.imageData;
-    let data, cw, ch, components;
-    try {
-      components = imageData.components || 3;
-      cw = imageData.width;
-      ch = imageData.height;
-      data = await imageData.getData({ chunky: true });
-    } finally {
-      imageData.dispose();
-    }
-
-    const gray = modeGray || isEffectivelyGray(data, cw, ch, components);
+    const preview = await readPreviewPixels(doc, null, W, H, 256);
+    const info = analyzePixels(preview.data, preview.w, preview.h, preview.components);
+    const gray = modeGray || info.gray;
     const gradient = forceGradient || (readGradientOption() && gray);
+    const stops = stopsForPanel(colors, info, { fillPaper: readFillPaperOption() });
 
-    const pixels = colorizePixels(data, cw, ch, components, colors);
-    data = null;
-
-    if (doc.layers.length) {
-      doc.activeLayers = [doc.layers[0]];
-    }
-    const layer = await doc.createLayer({
+    // One Gradient Map adjustment layer on top of the stack, not clipped.
+    const top = doc.layers.length ? doc.layers[0] : null;
+    const layer = await makeGradientMapLayer(doc, top, stops, {
       name: TINT_PREFIX + " - " + emo.label + (gradient ? GRADIENT_SUFFIX : ""),
-      mode: gradient ? "normal" : "color",
       opacity: strength,
+      blend: gradient ? "normal" : "color",
+      clip: false,
     });
-
-    let out;
-    try {
-      out = await imaging.createImageDataFromBuffer(pixels, {
-        width: cw,
-        height: ch,
-        components: 4,
-        chunky: true,
-        colorSpace: "RGB",
-      });
-      await imaging.putPixels({
-        documentID: doc.id,
-        layerID: layer.id,
-        imageData: out,
-        replace: false,
-        targetBounds: { left: 0, top: 0 },
-        commandName: "Emotion tint",
-      });
-      if (cw !== W || ch !== H) {
-        await layer.scale(
-          (W / cw) * 100,
-          (H / ch) * 100,
-          constants.AnchorPosition.TOPLEFT
-        );
-      }
-    } catch (e) {
-      try { await layer.delete(); } catch (e2) { console.error(e2); }
-      throw e;
-    } finally {
-      if (out) { out.dispose(); }
-    }
 
     return {
       name: doc.name,
       label: emo.label,
       strength: strength,
       gray: gray,
+      lineArt: info.lineArt,
       gradient: gradient,
       removed: removed,
       colors: colors,
+      layerId: layer.id,
     };
   } finally {
     await hostControl.resumeHistory(suspension);
@@ -2389,6 +2432,97 @@ async function applyImportEmotionTint(key, colors, ctx, docs) {
   };
 }
 
+
+/* ------------------------------------------------------------------ */
+/* gradient map tint layers                                            */
+/* ------------------------------------------------------------------ */
+
+function readFillPaperOption() {
+  const el = document.getElementById("optFillPaper");
+  return el ? !!el.checked : true;
+}
+
+function readBandsOption() {
+  const el = document.getElementById("optBands");
+  return !!(el && el.checked);
+}
+
+function readBandStrength(band) {
+  const el = document.getElementById("optBand" + band.charAt(0).toUpperCase() + band.slice(1));
+  let v = el ? parseInt(el.value, 10) : 100;
+  if (!isFinite(v)) { v = 100; }
+  return Math.max(0, Math.min(100, v));
+}
+
+/* Read a small preview of one layer (or the composite when layerId is null). */
+async function readPreviewPixels(doc, layerId, w, h, longSide) {
+  const long = longSide || 256;
+  const scale = Math.min(long / Math.max(1, w), long / Math.max(1, h), 1);
+  const req = {
+    documentID: doc.id,
+    targetSize: { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) },
+    componentSize: 8,
+    colorSpace: "RGB",
+  };
+  if (layerId !== null && layerId !== undefined) { req.layerID = layerId; }
+  const result = await imaging.getPixels(req);
+  const imageData = result.imageData;
+  try {
+    return {
+      data: await imageData.getData({ chunky: true }),
+      w: imageData.width, h: imageData.height,
+      components: imageData.components || 3,
+    };
+  } finally { imageData.dispose(); }
+}
+
+/* Read a small preview of the composite inside one rectangle (for panel groups). */
+async function readPreviewRegion(doc, bounds, w, h, longSide) {
+  const long = longSide || 256;
+  const scale = Math.min(long / Math.max(1, w), long / Math.max(1, h), 1);
+  const result = await imaging.getPixels({
+    documentID: doc.id,
+    sourceBounds: { left: Math.round(Number(bounds.left)), top: Math.round(Number(bounds.top)),
+      right: Math.round(Number(bounds.right)), bottom: Math.round(Number(bounds.bottom)) },
+    targetSize: { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) },
+    componentSize: 8,
+    colorSpace: "RGB",
+  });
+  const imageData = result.imageData;
+  try {
+    return { data: await imageData.getData({ chunky: true }), w: imageData.width, h: imageData.height,
+      components: imageData.components || 3 };
+  } finally { imageData.dispose(); }
+}
+
+/* Make one Gradient Map adjustment layer directly above `above` (a layer), and
+ * clip it to that layer when clip is true. Returns the new layer. */
+async function makeGradientMapLayer(doc, above, stops, opts) {
+  if (above) { doc.activeLayers = [above]; }
+  await action.batchPlay([gradientMapMake(stops, opts)], {});
+  const layer = doc.activeLayers[0];
+  if (!layer) { throw new Error("The gradient map layer was not created."); }
+  // With a group selected Photoshop creates the new layer inside it; a panel
+  // group needs the map above the group so the clip covers every layer in it.
+  if (above && (above.kind === "group" || (above.layers && above.layers.length)) && layer.parent && layer.parent.id === above.id) {
+    await layer.move(above, constants.ElementPlacement.PLACEBEFORE);
+    doc.activeLayers = [layer];
+  }
+  if (opts && opts.clip) {
+    try { layer.isClippingMask = true; }
+    catch (e) {
+      await action.batchPlay([{ _obj: "groupEvent", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }] }], {});
+    }
+  }
+  return layer;
+}
+
+/* Build the stops for a panel from its analysis, the palette and the options. */
+function stopsForPanel(colors, info, opts) {
+  if (info && info.lineArt) { return lineArtStops(colors, info, opts.fillPaper !== false); }
+  return rampStops(colors);
+}
+
 async function prepareTintDocument(doc) {
   if (doc.mode === "bitmapMode" || doc.mode === "duotoneMode") {
     await doc.changeMode("grayscaleMode");
@@ -2405,122 +2539,89 @@ async function tintPanelCore(doc, panel, colors, opts) {
   }
   const emo = opts.emo || { label: "Emotion" };
   const strength = opts.strength === undefined ? readStrength() : opts.strength;
-  const gradientOption = opts.gradient === undefined
-    ? readGradientOption()
-    : opts.gradient;
+  const gradientOption = opts.gradient === undefined ? readGradientOption() : opts.gradient;
+  const fillPaper = opts.fillPaper === undefined ? readFillPaperOption() : opts.fillPaper;
+  const bands = opts.bands === undefined ? readBandsOption() : opts.bands;
 
   let panelLayer = panel.layer;
-  let left = 0, top = 0, W = 0, H = 0;
+  const b = panelLayer.boundsNoEffects || panelLayer.bounds;
+  if (!b) { throw new Error("The selected panel has no pixels."); }
+  const W = Math.max(1, Math.round(Number(b.right) - Number(b.left)));
+  const H = Math.max(1, Math.round(Number(b.bottom) - Number(b.top)));
 
-  function takeBounds(layer) {
-    const b = layer.boundsNoEffects || layer.bounds;
-    if (!b) { return false; }
-    left = Math.round(Number(b.left));
-    top = Math.round(Number(b.top));
-    W = Math.max(1, Math.round(Number(b.right) - Number(b.left)));
-    H = Math.max(1, Math.round(Number(b.bottom) - Number(b.top)));
-    return W > 0 && H > 0;
-  }
-
-  if (!takeBounds(panelLayer)) {
-    throw new Error("The selected panel has no pixels.");
-  }
-
-  function targetFor(width, height) {
-    let tw = width, th = height;
-    if (width * height > TINT_MAX_PIXELS) {
-      const s = Math.sqrt(TINT_MAX_PIXELS / (width * height));
-      tw = Math.max(1, Math.round(width * s));
-      th = Math.max(1, Math.round(height * s));
-    }
-    return { width: tw, height: th };
-  }
-
-  async function readPixels(layer, target) {
-    return await imaging.getPixels({
-      documentID: doc.id,
-      layerID: layer.id,
-      targetSize: target,
-      componentSize: 8,
-      colorSpace: "RGB",
-    });
-  }
-
-  let result;
+  const removed = await removePanelTintLayers(doc, panel.index);
+  let preview;
   try {
-    result = await readPixels(panelLayer, targetFor(W, H));
+    if (panelLayer.kind === "group" || (panelLayer.layers && panelLayer.layers.length)) {
+      preview = await readPreviewRegion(doc, b, W, H, 256);
+    } else {
+      preview = await readPreviewPixels(doc, panelLayer.id, W, H, 256);
+    }
   } catch (e) {
-    // Older template builds or a smart object still in the stack: rasterize
-    // and retry once. Rasterizing can change the layer id, so re-resolve it.
+    // A smart object still in the stack: rasterize and retry once.
     console.error(e);
     await rasterizeLayer(panelLayer.id);
     panelLayer = findPanelImage(doc, panel.index) || panelLayer;
-    if (!takeBounds(panelLayer)) {
-      throw new Error("The selected panel has no pixels.");
-    }
-    result = await readPixels(panelLayer, targetFor(W, H));
+    preview = await readPreviewPixels(doc, panelLayer.id, W, H, 256);
   }
-  const imageData = result.imageData;
-  let data, cw, ch, components;
-  try {
-    components = imageData.components || 3;
-    cw = imageData.width;
-    ch = imageData.height;
-    data = await imageData.getData({ chunky: true });
-  } finally {
-    imageData.dispose();
-  }
-  if (!(cw > 0 && ch > 0)) {
-    throw new Error("The selected panel has no pixels.");
-  }
+  const info = analyzePixels(preview.data, preview.w, preview.h, preview.components);
+  preview = null;
 
-  const removed = await removePanelTintLayers(doc, panel.index);
-  const gray = modeIsGray(doc.mode) || isEffectivelyGray(data, cw, ch, components);
+  const gray = modeIsGray(doc.mode) || info.gray;
   const gradient = gradientOption && gray;
-  const pixels = colorizePixels(data, cw, ch, components, colors);
-  data = null;
+  const blend = gradient ? "normal" : "color";
+  const stops = stopsForPanel(colors, info, { fillPaper: fillPaper });
+  const baseName = panelTintName(emo.label, panel.index);
+  const made = [];
 
-  const layer = await doc.createLayer({
-    name: panelTintName(emo.label, panel.index),
-    mode: gradient ? "normal" : "color",
-    opacity: strength,
-  });
-
-  let out;
   try {
-    out = await imaging.createImageDataFromBuffer(pixels, {
-      width: cw,
-      height: ch,
-      components: 4,
-      chunky: true,
-      colorSpace: "RGB",
-    });
-    await imaging.putPixels({
-      documentID: doc.id,
-      layerID: layer.id,
-      imageData: out,
-      replace: false,
-      targetBounds: { left: left, top: top },
-      commandName: "Emotion tint",
-    });
-    if (cw !== W || ch !== H) {
-      await layer.scale(
-        (W / cw) * 100,
-        (H / ch) * 100,
-        constants.AnchorPosition.TOPLEFT
-      );
-    }
-    try {
-      await moveAbove(layer.id, panelLayer.id);
-      layer.isClippingMask = true;
-    } catch (e) {
-      console.error(e);
+    if (bands) {
+      // Three clipped gradient maps, one per value band, each with its own opacity.
+      // Each carries a layer mask built from the panel's own luminance, so the
+      // maps never re-map each other. Made bottom-up: Shadows / Midtones / Highlights.
+      const isGroup = panelLayer.kind === "group" || (panelLayer.layers && panelLayer.layers.length);
+      const full = isGroup
+        ? await readPreviewRegion(doc, b, W, H, Math.max(W, H))
+        : await readPreviewPixels(doc, panelLayer.id, W, H, Math.max(W, H));
+      const lum = luminanceOf(full.data, full.w, full.h, full.components);
+      const order = ["shadows", "midtones", "highlights"];
+      let above = panelLayer;
+      for (const band of order) {
+        const layer = await makeGradientMapLayer(doc, above, stops, {
+          name: baseName + " - " + BANDS[band].label,
+          opacity: Math.round(strength * readBandStrength(band) / 100),
+          blend: blend,
+          clip: true,
+        });
+        made.push(layer);
+        above = layer;
+        doc.activeLayers = [layer];
+        let maskData = null;
+        try {
+          maskData = await imaging.createImageDataFromBuffer(bandMask(lum, band), {
+            width: full.w, height: full.h, components: 1, chunky: true, colorSpace: "Grayscale",
+          });
+          await imaging.putLayerMask({
+            documentID: doc.id, layerID: layer.id, imageData: maskData,
+            targetBounds: { left: Math.round(Number(b.left)), top: Math.round(Number(b.top)) },
+            replace: true,
+          });
+        } catch (e) {
+          // No mask support: fall back to a Blend If range on the underlying layer.
+          console.error("band mask failed, using Blend If:", e);
+          await action.batchPlay([bandBlendRange(band)], {});
+        } finally {
+          if (maskData) { maskData.dispose(); }
+        }
+      }
+    } else {
+      made.push(await makeGradientMapLayer(doc, panelLayer, stops, {
+        name: baseName, opacity: strength, blend: blend, clip: true,
+      }));
     }
   } catch (e) {
-    try { await layer.delete(); } catch (e2) { console.error(e2); }
+    for (const l of made) { try { await l.delete(); } catch (e2) { console.error(e2); } }
     throw e;
-  } finally {
-    if (out) { out.dispose(); }
   }
 
   return {
@@ -2529,8 +2630,11 @@ async function tintPanelCore(doc, panel, colors, opts) {
     label: emo.label,
     strength: strength,
     gray: gray,
+    lineArt: info.lineArt,
     gradient: gradient,
+    bands: bands,
     removed: removed,
+    layers: made.length,
   };
 }
 
@@ -2634,7 +2738,7 @@ async function applyRowEmotionTint(key, colors, ctx, row) {
 async function onEmotion(key) {
   const emo = EMOTIONS[key];
   if (!emo) { return; }
-  const colors = randomEmotionPalette(emo.colors, readColorRange());
+  const colors = paletteFor(key, emo);
   updateEmotionSwatches(colors);
 
   const activeDoc = app.documents.length ? app.activeDocument : null;
@@ -2723,6 +2827,9 @@ async function onEmotion(key) {
           msg += " | skipped " + result.failures.length + " panel" +
             (result.failures.length === 1 ? "" : "s");
         }
+        const lineArt = result.results.filter(function (r) { return r.lineArt; }).length;
+        if (lineArt) { msg += " | line art: " + lineArt; }
+        if (result.results.some(function (r) { return r.bands; })) { msg += " | 3 value bands"; }
         setStatus(msg, "ok");
       } catch (e) {
         console.error(e);
@@ -2894,113 +3001,115 @@ async function onEmotion(key) {
   }
 }
 
-async function onStrengthChange() {
+/* Which tint layers a Strength change applies to: the checked panels, else the
+ * selected panel (or its row in row mode), else every tint in the document. */
+function strengthTargets(doc) {
+  const all = collectTintLayers(doc.layers, []);
+  const isTemplate = doc.name === TEMPLATE_DOC_NAME || listPanelLayers(doc).length > 0;
+  if (!isTemplate) { return { tints: all, scope: doc.name }; }
+
+  let indexes = panelPicks
+    .filter(function (p) { return p.docId === doc.id; })
+    .map(function (p) { return p.index; });
+  let scope = indexes.length + " checked panel" + (indexes.length === 1 ? "" : "s");
+  if (!indexes.length) {
+    const picked = resolvePanel(doc);
+    if (picked && !picked.error) {
+      if (readRowMode()) {
+        const row = findRowForPanel(panelRows(doc), picked.index);
+        if (row) {
+          indexes = row.panels.map(function (p) { return p.index; });
+          scope = "Row " + row.number;
+        }
+      }
+      if (!indexes.length) { indexes = [picked.index]; scope = "Panel " + panelLabel(picked.index); }
+    }
+  }
+  if (!indexes.length) { return { tints: all, scope: "every tint" }; }
+  return {
+    tints: all.filter(function (l) { return indexes.indexOf(panelNumberFromName(l.name)) >= 0; }),
+    scope: scope,
+  };
+}
+
+function bandOfLayer(layer) {
+  const m = / - (Shadows|Midtones|Highlights)$/.exec(String(layer.name || ""));
+  return m ? m[1].toLowerCase() : null;
+}
+
+let strengthTimer = null;
+let strengthRunning = false;
+let strengthQueued = null;
+
+/* Strength (and the three band sliders) update live while dragging. Calls are
+ * serialized so a fast drag never overlaps two modal scopes. */
+function scheduleStrength(band) {
+  strengthQueued = band || null;
+  if (strengthTimer) { clearTimeout(strengthTimer); }
+  strengthTimer = setTimeout(function () { strengthTimer = null; runStrength(); }, 120);
+}
+
+async function runStrength() {
+  if (strengthRunning) { return; }
+  strengthRunning = true;
+  try {
+    while (strengthQueued !== undefined) {
+      const band = strengthQueued;
+      strengthQueued = undefined;
+      await applyStrength(band);
+    }
+  } finally {
+    strengthRunning = false;
+    strengthQueued = undefined;
+  }
+}
+
+async function applyStrength(band) {
   if (!app.documents.length) { return; }
   const doc = app.activeDocument;
-  const isTemplate =
-    doc.name === TEMPLATE_DOC_NAME || listPanelLayers(doc).length > 0;
   const strength = readStrength();
 
-  let tints = collectTintLayers(doc.layers, []);
-  if (isTemplate) {
-    const picked = resolvePanel(doc);
-    if (!picked || picked.error) {
-      setStatus("Select a panel layer or its tint, then change strength.");
-      return;
-    }
-    syncPanelPickerSelection(doc, picked.index);
-
-    const rowMode = readRowMode();
-    let row = null;
-    let indexes = [picked.index];
-    if (rowMode) {
-      row = findRowForPanel(panelRows(doc), picked.index);
-      if (!row) {
-        setStatus("Could not find this panel's row. Press Refresh panels and try again.");
-        return;
-      }
-      indexes = row.panels.map(function (p) { return p.index; });
-    }
-
-    tints = tints.filter(function (l) {
-      return indexes.indexOf(panelNumberFromName(l.name)) >= 0;
-    });
-    if (!tints.length) {
-      setStatus(
-        rowMode
-          ? "Row " + row.number + " has no emotion tints yet."
-          : "Panel " + panelLabel(picked.index) + " has no emotion tint yet."
-      );
-      return;
-    }
-    try {
-      await core.executeAsModal(
-        async () => {
-          for (const l of tints) { l.opacity = strength; }
-        },
-        { commandName: "Color Script: " + (rowMode ? "row" : "panel") + " tint strength" }
-      );
-      setStatus(
-        "template: " + doc.name + " | " +
-          (rowMode ? "Row " + row.number : "Panel " + panelLabel(picked.index)) +
-          " tint strength " + strength + "%",
-        "ok"
-      );
-    } catch (e) {
-      console.error(e);
-      setStatus("Strength change failed: " + (e && e.message ? e.message : e), "err");
-    }
-    return;
-  }
-
+  let docs = [doc];
   const importTargets = importedGrayscaleDocs();
-  if (importTargets.length && app.activeDocument &&
-      importTargets.some(function (d) { return d.id === app.activeDocument.id; })) {
-    try {
-      const updated = await core.executeAsModal(
-        async () => {
-          let n = 0;
-          for (const d of importTargets) {
-            for (const l of collectTintLayers(d.layers, [])) {
-              l.opacity = strength;
-              n++;
-            }
-          }
-          return n;
-        },
-        { commandName: "Color Script: tint strength" }
-      );
-      if (!updated) {
-        setStatus("The imported images have no emotion tint yet.");
-        return;
-      }
-      setStatus(
-        "import: " + importTargets.length + " image" +
-          (importTargets.length === 1 ? "" : "s") +
-          " | tint strength " + strength + "%",
-        "ok"
-      );
-    } catch (e) {
-      console.error(e);
-      setStatus("Strength change failed: " + (e && e.message ? e.message : e), "err");
-    }
-    return;
+  if (importTargets.length && importTargets.some(function (d) { return d.id === doc.id; })) {
+    docs = importTargets;
   }
 
-  if (!tints.length) { return; }
+  const jobs = [];
+  let scope = "";
+  for (const d of docs) {
+    const t = docs.length > 1 ? { tints: collectTintLayers(d.layers, []), scope: docs.length + " imported images" }
+      : strengthTargets(d);
+    scope = t.scope;
+    for (const l of t.tints) {
+      const lb = bandOfLayer(l);
+      if (band && lb !== band) { continue; }
+      const factor = lb ? readBandStrength(lb) / 100 : 1;
+      jobs.push({ layer: l, opacity: Math.round(strength * factor) });
+    }
+  }
+  if (!jobs.length) {
+    setStatus("No emotion tint to adjust yet. Choose a mood first.");
+    return;
+  }
   try {
     await core.executeAsModal(
-      async () => {
-        for (const l of tints) { l.opacity = strength; }
-      },
+      async () => { for (const j of jobs) { j.layer.opacity = j.opacity; } },
       { commandName: "Color Script: tint strength" }
     );
-    setStatus("emotion: " + doc.name + " | tint strength " + strength + "%", "ok");
+    setStatus(
+      (band ? band.charAt(0).toUpperCase() + band.slice(1) + " " : "Tint ") +
+        "strength " + (band ? readBandStrength(band) : strength) + "% on " + scope +
+        " (" + jobs.length + " layer" + (jobs.length === 1 ? "" : "s") + ")",
+      "ok"
+    );
   } catch (e) {
     console.error(e);
     setStatus("Strength change failed: " + (e && e.message ? e.message : e), "err");
   }
 }
+
+async function onStrengthChange() { return applyStrength(null); }
 
 async function onClearEmotion() {
   const bar = document.getElementById("progress");
@@ -3149,8 +3258,9 @@ async function buildSheet(spec, execContext, doc) {
   return `${doc.name} | ${Math.round(doc.width)}x${Math.round(doc.height)} px @ ${doc.resolution} ppi | ${swatchCount} swatches, ${stripCount} gradient(s), ${imageCount} image(s), ${textCount} labels | ${(spec.palettes || []).length} palette(s)`;
 }
 
-async function buildTemplateSheet(spec, execContext, doc) {
+async function buildTemplateSheet(spec, execContext, doc, opts) {
   doc = doc || app.activeDocument;
+  opts = opts || {};
   const hostControl = execContext.hostControl;
   const suspension = await hostControl.suspendHistory({
     documentID: doc.id,
@@ -3158,12 +3268,23 @@ async function buildTemplateSheet(spec, execContext, doc) {
   });
 
   let placed = 0;
+  let layered = 0;
   const errors = [];
   try {
     for (const p of (spec.panels || [])) {
       try {
-        const id = await placePng(p.png, p.x, p.y, p.w, p.h, p.name, p.entry);
-        await rasterizeLayer(id);
+        if (opts.keepPsd && isLayeredSource(p.entry)) {
+          const r = await placePsdLayers(p.entry, p.x, p.y, p.w, p.h, p.name);
+          const g = findLayerById(doc, r.id);
+          if (opts.desaturate && g && g.layers) {
+            for (const child of g.layers) { if (child.kind === "pixel") { await desaturateLayer(child.id); } }
+          }
+          layered++;
+        } else {
+          const id = await placePng(p.png, p.x, p.y, p.w, p.h, p.name, p.entry);
+          await rasterizeLayer(id);
+          if (opts.desaturate) { await desaturateLayer(id); }
+        }
         placed++;
       } catch (e) {
         console.error(e);
@@ -3185,8 +3306,9 @@ async function buildTemplateSheet(spec, execContext, doc) {
     await hostControl.resumeHistory(suspension);
   }
 
-  const gray = doc.mode === "grayscaleMode" ? "grayscale | " : "";
+  const gray = opts.desaturate ? "desaturated | " : "colour kept | ";
   let summary = `${doc.name} | ${gray}${Math.round(doc.width)}x${Math.round(doc.height)} px @ ${doc.resolution} ppi | ${placed} panel(s) | ${spec.columns} columns | no swatches/labels`;
+  if (layered) { summary += " | " + layered + " PSD panel(s) kept their layers"; }
   if (errors.length) {
     summary += " | skipped " + errors.length + " (" + errors[0] + ")";
   }
@@ -3324,11 +3446,17 @@ async function onBuildTemplate() {
           }
 
           setStatus("Planning " + entries.length + " panel(s)...");
-          const spec = planTemplate(entries, { columns: columns });
+          const preset = readPagePreset();
+          const spec = planTemplate(entries, { columns: columns, w: preset.w, h: preset.h });
 
           setStatus("Drawing template...");
-          const doc = await createSheetDocument(spec, "grayscaleMode");
-          let result = await buildTemplateSheet(spec, ctx, doc);
+          const doc = await createSheetDocument(spec, "RGBColorMode");
+          let result = await buildTemplateSheet(spec, ctx, doc, { desaturate: readDesaturateOption(), keepPsd: readKeepPsdOption() });
+          if (readCaptionsOption()) {
+            setStatus("Adding captions...");
+            await reflowTemplate(doc, { preset: preset, columns: columns, captions: true });
+            result += " | captions";
+          }
           if (failed.length) {
             result += " | skipped: " + failed.join(", ");
           }
@@ -3422,10 +3550,10 @@ window.addEventListener("load", () => {
   wireCheck("sharedCheck", "optShared");
   wireCheck("gradientCheck", "optGradientMap");
   wireCheck("rowCheck", "optEmotionRow");
-  wireCheck("emoHappyCheck", "btnEmoHappy");
-  wireCheck("emoTenseCheck", "btnEmoTense");
-  wireCheck("emoSadCheck", "btnEmoSad");
-  wireCheck("emoCautiousCheck", "btnEmoCautious");
+  wireCheck("desaturateCheck", "optDesaturate");
+  wireCheck("keepPsdCheck", "optKeepPsd");
+  wireCheck("fillPaperCheck", "optFillPaper");
+  wireCheck("bandsCheck", "optBands");
 
   const scroller = document.getElementById("scroll");
   const scrollNav = document.getElementById("scrollNav");
@@ -3466,121 +3594,54 @@ window.addEventListener("load", () => {
     jsonBtn.addEventListener("click", onBuildJson);
   }
 
-  const importBtn = document.getElementById("btnImportGray");
-  if (importBtn) {
-    importBtn.addEventListener("click", onBuildTemplate);
-  }
-
-const emotionButtons = [
-    ["btnEmoHappy", "happy"],
-    ["btnEmoTense", "tense"],
-    ["btnEmoSad", "sad"],
-    ["btnEmoCautious", "cautious"],
-];
-for (const pair of emotionButtons) {
-    const b = document.getElementById(pair[0]);
-    if (b) {
-      b.addEventListener("click", function () { onEmotion(pair[1]); });
-    }
-}
-
   const clearBtn = document.getElementById("btnEmotionClear");
   if (clearBtn) {
     clearBtn.addEventListener("click", onClearEmotion);
   }
-  const selectAllPanels = document.getElementById("optSelectAllPanels");
-  if (selectAllPanels) {
-    selectAllPanels.addEventListener("change", function () {
-      const doc = app.documents.length ? app.activeDocument : null;
-      const rows = doc ? panelRows(doc) : [];
-      if (!rows.length) { return; }
-      const allIndexes = [];
-      for (const row of rows) {
-        for (const item of row.panels) {
-          allIndexes.push(item.index);
-        }
-      }
-      if (selectAllPanels.checked) {
-        panelPicks = allIndexes.map(function (idx) {
-          return { docId: doc.id, index: idx };
-        });
-      } else {
-        panelPicks = [];
-      }
-      syncPanelPickerSelection(doc, null);
-      try {
-        core.executeAsModal(
-          async () => {
-            app.activeDocument = doc;
-            const layers = allIndexes
-              .map(function (idx) { return findPanelImage(doc, idx); })
-              .filter(function (l) { return !!l; });
-            if (selectAllPanels.checked && layers.length) {
-              await selectLayers(layers.map(function (l) { return l.id; }));
-            } else if (!selectAllPanels.checked) {
-              app.activeDocument.activeLayers = [];
-            }
-          },
-          { commandName: "Color Script: select all panels" }
-        );
-      } catch (e) {
-        console.error(e);
-      }
-      const count = selectAllPanels.checked ? allIndexes.length : 0;
-      setStatus(
-        count
-          ? "Selected all " + count + " panels. Choose a mood to color them."
-          : "Deselected all panels.",
-        "ok"
-      );
-    });
-  }
 
   const refreshPanelsBtn = document.getElementById("btnRefreshPanels");
   if (refreshPanelsBtn) {
+    // Refresh re-reads the open template's panels and thumbnails. It never
+    // closes or changes the document.
     refreshPanelsBtn.addEventListener("click", async () => {
-      try {
-        await core.executeAsModal(
-          async () => {
-            const prevDialogs = app.displayDialogs;
-            app.displayDialogs = constants.DialogModes.NONE;
-            try {
-              const doc = app.documents.length ? app.activeDocument : null;
-              if (doc && (doc.name === "Color Script Template" || listPanelLayers(doc).length > 0)) {
-                app.activeDocument = doc;
-                await doc.close(constants.SaveOptions.DONOTSAVECHANGES);
-              }
-            } finally {
-              app.displayDialogs = prevDialogs;
-            }
-          },
-          { commandName: "Color Script: remove template" }
-        );
-      } catch (e) {
-        console.error(e);
-      }
-      panelPicks = [];
-      panelThumbCache = {};
       panelChipNodes = [];
       const rows = await refreshTemplatePanels({ clearCache: true });
+      const n = rows.reduce(function (sum, r) { return sum + r.panels.length; }, 0);
       setStatus(
-        "Template removed. Build a new template to import images.",
-        "ok"
+        n ? "Panels refreshed: " + n + " panel" + (n === 1 ? "" : "s") + "."
+          : "No template panels found. Open a Color Script Template.",
+        n ? "ok" : ""
       );
     });
   }
   setTimeout(function () { refreshTemplatePanels(); }, 250);
   const strength = document.getElementById("optEmotionStrength");
   if (strength) {
-    strength.addEventListener("change", onStrengthChange);
     const out = document.getElementById("strengthOut");
-    const sync = () => {
-      if (out) { out.textContent = strength.value + "%"; }
-    };
-    strength.addEventListener("input", sync);
-    strength.addEventListener("change", sync);
+    const sync = () => { if (out) { out.textContent = strength.value + "%"; } };
+    strength.addEventListener("input", () => { sync(); scheduleStrength(null); });
+    strength.addEventListener("change", () => { sync(); scheduleStrength(null); });
     sync();
   }
+  for (const band of ["shadows", "midtones", "highlights"]) {
+    const id = "optBand" + band.charAt(0).toUpperCase() + band.slice(1);
+    const el = document.getElementById(id);
+    const out = document.getElementById(id + "Out");
+    if (!el) { continue; }
+    const sync = () => { if (out) { out.textContent = el.value + "%"; } };
+    el.addEventListener("input", () => { sync(); scheduleStrength(band); });
+    el.addEventListener("change", () => { sync(); scheduleStrength(band); });
+    sync();
+  }
+  const bandsCheck = document.getElementById("optBands");
+  const bandRows = document.getElementById("bandRows");
+  const syncBands = () => { if (bandRows) { bandRows.hidden = !(bandsCheck && bandsCheck.checked); } };
+  if (bandsCheck) { bandsCheck.addEventListener("change", syncBands); }
+  const bandsRow = document.getElementById("bandsCheck");
+  if (bandsRow) { bandsRow.addEventListener("click", () => setTimeout(syncBands, 0)); }
+  syncBands();
+
+  if (typeof initFeatures === "function") { initFeatures(); }
   const colorRange = document.getElementById("optColorRange");
   if (colorRange) {
     const out = document.getElementById("rangeOut");

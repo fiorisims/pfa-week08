@@ -1,67 +1,127 @@
-# Color Script — Photoshop UXP Plugin
+# Color Script — Photoshop UXP plugin
 
-A Photoshop panel that builds grayscale color-script templates and palette sheets directly inside Photoshop. It is the "inside Photoshop" sibling of a standalone Python app: instead of the terminal driving Photoshop, the panel lives inside Photoshop as a UXP plugin.
+A Photoshop panel that lays your images out as a colour-script page and colours each panel by mood,
+with real Gradient Map adjustment layers you can keep editing. It also builds palette sheets
+(dominant colours, hex labels, gradient strips) from any set of images.
 
-**App:** Adobe Photoshop 2026 (24.2.0+)
-**Type:** UXP Panel (manifest v5)
+**App:** Adobe Photoshop 2026 (24.2.0+) · **Type:** UXP panel (manifest v5)
 **Repo:** https://github.com/fiorisims/pfa-week08
 
-## What it does
+This branch (`isaac-fixes`) is the post-critique build. The 2026-11-03 class critique asked for
+nine things; they are all here, plus the fixes and additions listed under "What changed".
 
-### Color Script Template
-Pick images and a column count (2–5). The panel creates a **grayscale** 11×17 in, 150 ppi (2550×1650 px) landscape page and lays the images out as an evenly spaced panel grid: scaled to fit, centred, with no swatches, hex labels, captions or title. Each image becomes its own layer named `Panel 01 - <file>`, `Panel 02 - <file>`, ... and the first panel is selected when the build finishes.
+## Using it
 
-- **Template panels picker**: A card lists every panel as a thumbnail chip, grouped by visual row. Check the box next to a panel to select it for coloring. Click a chip to select that panel in Photoshop. The Layers panel selection also works and wins when a panel layer is selected.
-- **Mood per panel**: Select one or more panels (checkboxes or Layers panel), then click **Happy**, **Tense**, **Sad** or **Cautious**. The panel writes a gradient-map overlay clipped to that panel only. Selecting another mood rerolls that panel.
-- **Whole row, slight variations** (checkbox): tints every panel in a selected panel's row in one undo step, with a gentle left-to-right hue drift.
-- **Strength** (10–100%): adjusts tint opacity.
-- **Color range** (0–200%): scales the hue/saturation/lightness spread of the emotion palette.
-- **Clear emotion tint**: removes all tints.
+### Colour script tab
+1. **Build Template...** — pick images, a page preset (11×17 landscape or portrait, 16:9 HD, A3,
+   square) and a column count (1–8). Each image becomes a layer `Panel 01 - <file>`, scaled to fit
+   its cell and centred. Colour images keep their colour; tick **Desaturate panels on import** for
+   the old grayscale look. Tick **Keep the layers of PSD files** to import a PSD as a panel group
+   with its layers intact. **Caption each panel** adds the file name under each panel.
+   **Add images...** appends panels to the open template; **Re-flow panels** re-lays every panel
+   with the current page and column settings (and resizes the canvas if the preset changed).
+2. **Template panels** — every panel as a thumbnail chip, grouped by row. Tick the panels to
+   colour; **All**, **None**, **Select row**, or Shift+click for a range. Clicking a chip selects
+   its layer in Photoshop; the Layers panel selection also works.
+3. **Mood** — thirteen mood buttons (Happy, Tense, Sad, Cautious, Calm, Angry, Eerie, Romantic,
+   Nostalgic, Hopeful, Lonely, Triumphant, Dreamy). Each click rolls a variation of that mood and
+   writes one **Gradient Map adjustment layer per checked panel, clipped to that panel**. The
+   swatch strip shows the palette in use.
+   - **Describe it in words** — type something like `eerie dawn, muted` and press Apply words. The
+     panel blends the moods it recognises and applies modifiers (warm, cold, night, dawn, pastel,
+     neon, stormy, ocean, forest, golden, the seasons, plain colour names...). The note under the
+     swatches says what it understood. It is offline and deterministic: same words, same palette.
+   - **From colour picker... / From foreground colour** — a custom four-stop ramp around one
+     colour. Click any swatch to replace that stop with the current foreground colour.
+   - **Lock palette** reuses the exact palette on every panel you colour next; **Reroll** makes
+     another variation; **Apply this palette** colours the checked panels with what the strip shows.
+   - **Gradient map for grayscale panels** (on): a grayscale panel is replaced by the ramp (Normal
+     blend). A colour panel always gets a Color-blend map, which keeps its light and shadow.
+   - **Line art** is detected per panel (ink and paper, or dark lines on transparency): the ink
+     takes the shadow colour and the paper the light colour. Untick **fill the paper too** to
+     colour only the lines.
+   - **Split into shadows / midtones / highlights** writes three clipped maps per panel, each with
+     a layer mask built from the panel's own luminance so it only touches its band, and each with
+     its own strength slider. At 100% the three together read close to the single map; the
+     differences sit in the transition zones between bands.
+   - **Strength** is the adjustment layers' opacity. It applies to every checked panel (or the
+     selected panel, its row in row mode, or every tint) and moves while you drag.
+   - **Row variations** drifts the hue gently across a row. **Color range** widens or narrows how
+     far a variation strays from the base mood. **Clear emotion tint** removes every tint.
+4. **Export** — save the page as PNG or JPEG, save the current palette as an `.aco` swatch file
+   (Window > Swatches > Import Swatches), or copy its hex codes.
 
-### Build Template (Palette Sheet)
-Pick one or more images (PNG, JPG, GIF, BMP, TIF, WEBP, PSD, PSB). The panel extracts dominant colors from each image using k-means clustering and builds a palette sheet with color swatches, hex labels, and gradient strips.
+### Palette sheet tab
+**Build from images...** extracts the dominant colours of each image (deterministic k-means) and
+draws a palette sheet into a new document: thumbnails, swatches, hex labels and gradient strips,
+in one undo step. **Colors** per palette (2–16), **One palette for all images**, optional title.
+**Build from layout JSON...** replays a spec written by `palette_sheet.build_sheet`.
 
-- **Colors**: How many dominant colors to extract per image (2–16, default 6).
-- **One palette for all images**: Merges all images into a single shared palette.
-- **Sheet title**: Optional title at the top.
+### Settings tab
+**Theme**: Frutiger Aero (default), Match Photoshop (follows the host theme), or one of the four
+Photoshop greys. **Text size**: small, normal, large. Both are remembered.
 
-### Emotion Color
-Colorizes the active document or imported grayscale images with mood-based gradient maps. Import grayscale images, then click a mood to apply the same gradient map to all of them.
+## Installing
 
-## How to install and run
+### Permanent (.ccx)
+`tools/make-ccx.sh` packs `uxp-plugin/` into `dist/ColorScript-<version>.ccx`. Install it with
+Adobe's installer agent, then restart Photoshop and open **Plugins > Color Script**.
 
-### Prerequisites
-- Adobe Photoshop 2026 (24.2.0 or later)
-- UXP Developer Tool (or install the packaged .ccx)
-
-### Development (UXP Developer Tool)
-1. Download or clone this repo.
-2. Open the UXP Developer Tool and sign in with your Adobe ID.
-3. Click **Add Plugin…** and choose the `uxp-plugin/` folder.
-4. Click **• • • → Load**. Photoshop opens the **Color Script** panel.
-5. Use **• • • → Debug** for the console, or **• • • → Watch** to reload on save.
-
-### Permanent install (.ccx)
-```powershell
-& "C:\Program Files\Common Files\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe" /install "path\to\ColorScript-<version>.ccx"
+macOS:
 ```
-Then restart Photoshop and open **Plugins > Color Script**.
+"/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install dist/ColorScript-1.8.0.ccx
+```
+Windows:
+```
+& "C:\Program Files\Common Files\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe" /install dist\ColorScript-1.8.0.ccx
+```
 
-## What doesn't work yet
-- The `.ccx` package is not included in this repo; you need to build it from the `uxp-plugin/` folder or use the UXP Developer Tool.
-- Template pages are whole-page only — no crop tool.
-- PSD/PSB inputs contribute their flattened composite only.
-- Strength changes apply to the selected panel/row; there is no per-tint strength.
-- The standalone Python app (`palette_gui.py`) remains the more feature-rich option with drag-to-arrange, crop, orientation, and .aco export.
-- Due to running into issues with running out of free usage, I was unable to fix the "Import template" feature, so at the moment they will be imported in grayscale by default. I will fix this when I have enough free usage to do so.
-- Similarly to last comment, another thing that does not work properly is the sliding scale that changes the color range. This may also be because of the values of the images I picked. I will have to troubleshoot that. 
+### Development
+UXP Developer Tool → **Add Plugin...** → choose `uxp-plugin/` → **Load**. **Debug** opens the
+console; **Watch** reloads on save.
 
-## What I'd build next
-- Add a crop tool for template panels.
-- Per-tint strength control.
-- Export color palettes as .aco swatch files directly from the panel.
-- Support for adjusting panel positions by dragging in the Photoshop canvas.
-- Add more emotion moods and allow custom mood palettes.
+## Tests
+`node tests/run.mjs` runs the dependency-free tests for the pure modules (gradient-map
+descriptors, pixel analysis, the mood interpreter). `tools/autotest.py` drives the real panel
+inside Photoshop through `uxp-plugin/autotest.js` (inert unless an `autotest.json` job is placed
+in the plugin's data folder); `tools/pstest.sh` wraps it.
+
+## Files
+```
+uxp-plugin/
+  manifest.json     plugin metadata (manifest v5, one panel entrypoint)
+  index.html        the panel UI and styles (Aero default, Photoshop themes)
+  index.js          template layout, palette sheet, panel picker, tint flows (batchPlay + Imaging API)
+  gradientmap.js    Gradient Map descriptors, line-art and value-band stops, pixel analysis (pure)
+  moods.js          the thirteen moods and the words interpreter (pure)
+  features.js       tabs, settings, custom colours, picker controls, re-flow, add images, export
+  autotest.js       developer self-test hook (does nothing without a job file)
+  icons/            panel icon
+tests/run.mjs       Node tests for the pure modules
+tools/              make-ccx.sh, autotest.py, pstest.sh, reload.sh
+```
+
+## What changed in this build (from the 2026-11-03 critique and review)
+- Template pages are RGB; imported images keep their colour (was: page created in Grayscale mode).
+- Strength applies to every checked panel and updates while dragging (was: one panel, on release).
+- Refresh re-scans the panels (was: it closed the document without saving).
+- Tints are Gradient Map adjustment layers, clipped to their panel (was: pixel layers painted
+  through a LUT, capped at 20 MP and rescaled).
+- Line art, value bands, PSD layers, more moods, typed moods, custom colours, palette lock,
+  page presets, captions, add images, re-flow, export, themes, text size, larger titles.
+- Thumbnails fall back to the panel number instead of a broken image.
+- One panel, three tabs; a two-line status; the unused network permission is gone.
+
+## Notes and limits
+- A Gradient Map maps luminance to the ramp. On a colour panel the map uses the Color blend mode,
+  so the panel's own light and shadow stay; on a grayscale panel it replaces the pixels (Normal).
+- Group panels (from PSD files) are analysed from the composite inside their bounds.
+- Words are interpreted by a small built-in lexicon (see `moods.js`); unknown words are ignored and
+  the note says so. No network, no account.
+- The colour picker button uses Photoshop's own picker; if the host refuses it, the foreground
+  colour is used and the status says so.
+- The standalone `palette_gui.py` app remains the more feature-rich option for palette sheets
+  (drag-to-arrange, crop, orientation).
 
 ## Peer run (from A6)
 Irene's Peer Run: 
@@ -86,12 +146,5 @@ What Was Fixed:
 ## Screen recording
 https://drive.google.com/file/d/1x20Wj68gNZWWMd3UkDT0WfmcwiWYiUHo/view?usp=sharing
 
-## Files
-```
-uxp-plugin/
-  manifest.json     plugin metadata (manifest v5, one panel entrypoint)
-  index.html        the panel UI (Frutiger Aero styling)
-  index.js          colour extraction + layout + batchPlay drawing
-  README.md         detailed plugin documentation
-  icons/            panel icon (@1x and @2x)
-```
+## Screen recording
+https://drive.google.com/file/d/1x20Wj68gNZWWMd3UkDT0WfmcwiWYiUHo/view?usp=sharing
