@@ -948,6 +948,17 @@ async function rasterizeLayer(id) {
   }
 }
 
+/* Remove the colour from one pixel layer (Image > Adjustments > Desaturate). */
+async function desaturateLayer(id) {
+  await selectLayer(id);
+  await action.batchPlay([{ _obj: "desaturate" }], {});
+}
+
+function readDesaturateOption() {
+  const el = document.getElementById("optDesaturate");
+  return !!(el && el.checked);
+}
+
 async function addText(contents, x, y, sizePx, color, bold, centered, name) {
   const doc = app.activeDocument;
   const ptSize = (sizePx * 72) / (doc.resolution || DPI_DEFAULT);
@@ -3149,8 +3160,9 @@ async function buildSheet(spec, execContext, doc) {
   return `${doc.name} | ${Math.round(doc.width)}x${Math.round(doc.height)} px @ ${doc.resolution} ppi | ${swatchCount} swatches, ${stripCount} gradient(s), ${imageCount} image(s), ${textCount} labels | ${(spec.palettes || []).length} palette(s)`;
 }
 
-async function buildTemplateSheet(spec, execContext, doc) {
+async function buildTemplateSheet(spec, execContext, doc, opts) {
   doc = doc || app.activeDocument;
+  opts = opts || {};
   const hostControl = execContext.hostControl;
   const suspension = await hostControl.suspendHistory({
     documentID: doc.id,
@@ -3164,6 +3176,7 @@ async function buildTemplateSheet(spec, execContext, doc) {
       try {
         const id = await placePng(p.png, p.x, p.y, p.w, p.h, p.name, p.entry);
         await rasterizeLayer(id);
+        if (opts.desaturate) { await desaturateLayer(id); }
         placed++;
       } catch (e) {
         console.error(e);
@@ -3185,7 +3198,7 @@ async function buildTemplateSheet(spec, execContext, doc) {
     await hostControl.resumeHistory(suspension);
   }
 
-  const gray = doc.mode === "grayscaleMode" ? "grayscale | " : "";
+  const gray = opts.desaturate ? "desaturated | " : "colour kept | ";
   let summary = `${doc.name} | ${gray}${Math.round(doc.width)}x${Math.round(doc.height)} px @ ${doc.resolution} ppi | ${placed} panel(s) | ${spec.columns} columns | no swatches/labels`;
   if (errors.length) {
     summary += " | skipped " + errors.length + " (" + errors[0] + ")";
@@ -3327,8 +3340,8 @@ async function onBuildTemplate() {
           const spec = planTemplate(entries, { columns: columns });
 
           setStatus("Drawing template...");
-          const doc = await createSheetDocument(spec, "grayscaleMode");
-          let result = await buildTemplateSheet(spec, ctx, doc);
+          const doc = await createSheetDocument(spec, "RGBColorMode");
+          let result = await buildTemplateSheet(spec, ctx, doc, { desaturate: readDesaturateOption() });
           if (failed.length) {
             result += " | skipped: " + failed.join(", ");
           }
@@ -3422,10 +3435,7 @@ window.addEventListener("load", () => {
   wireCheck("sharedCheck", "optShared");
   wireCheck("gradientCheck", "optGradientMap");
   wireCheck("rowCheck", "optEmotionRow");
-  wireCheck("emoHappyCheck", "btnEmoHappy");
-  wireCheck("emoTenseCheck", "btnEmoTense");
-  wireCheck("emoSadCheck", "btnEmoSad");
-  wireCheck("emoCautiousCheck", "btnEmoCautious");
+  wireCheck("desaturateCheck", "optDesaturate");
 
   const scroller = document.getElementById("scroll");
   const scrollNav = document.getElementById("scrollNav");

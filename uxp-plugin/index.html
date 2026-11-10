@@ -700,12 +700,19 @@
         <span class="label">Columns (2-5)</span>
         <input id="optTemplateCols" class="field num" type="number" min="2" max="5" step="1" placeholder="3" value="3" />
       </div>
+      <div class="row tight">
+        <div id="desaturateCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optDesaturate" type="checkbox" />
+          <span class="box"></span>
+          <span>Desaturate panels on import</span>
+        </div>
+      </div>
       <div class="row">
         <button id="btnTemplate" class="btn cta" type="button">Build Template...</button>
       </div>
       <p class="hint">
         Lays out the chosen images in an 11x17 panel grid with no swatches, labels or title.
-        Click a panel thumbnail, then pick a mood to color it.
+        Colour images keep their colour unless you tick Desaturate. Check panels, then pick a mood.
       </p>
     </section>
 
