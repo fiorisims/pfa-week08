@@ -110,6 +110,17 @@
         pendingPick = [];
         for (const n of step.names) { pendingPick.push(await data.getEntry(n)); }
         out.value = pendingPick.length;
+      } else if (step.op === "waitHost") {
+        // Photoshop can still be in a startup modal state after the panel loads.
+        const ps = window.require("photoshop");
+        const t0 = Date.now();
+        let ok = false, lastErr = null;
+        while (Date.now() - t0 < (step.maxMs || 120000)) {
+          try { await ps.core.executeAsModal(async () => {}, { commandName: "autotest ping" }); ok = true; break; }
+          catch (e) { lastErr = String(e && e.message || e); await sleep(1500); }
+        }
+        if (!ok) { throw new Error("host stayed modal: " + lastErr); }
+        out.value = Math.round((Date.now() - t0) / 1000) + "s";
       } else if (step.op === "saveTo") {
         pendingSave = step.name;
         out.value = step.name;

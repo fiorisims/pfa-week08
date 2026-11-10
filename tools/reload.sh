@@ -15,8 +15,8 @@ P=$HOME/Library/Application\ Support/Adobe/UXP/PluginsStorage/PHSP/27/External/c
 mkdir -p "$P"
 for i in $(seq 1 12); do
   osascript -e 'tell application "System Events" to tell process "Adobe Photoshop 2026" to click menu item 1 of menu 1 of menu item "Color Script (fixes)" of menu "Plugins" of menu bar 1' >/dev/null 2>&1
-  rm -f "$P/autotest-result.json"; echo '{"steps":[{"op":"wait","ms":10}]}' > "$P/autotest.json"
-  for j in $(seq 1 6); do [[ -e "$P/autotest-result.json" ]] && break; sleep 1; done
+  rm -f "$P/autotest-result.json"; echo '{"steps":[{"op":"waitHost","maxMs":90000}]}' > "$P/autotest.json"
+  for j in $(seq 1 100); do [[ -e "$P/autotest-result.json" ]] && break; sleep 1; done
   [[ -e "$P/autotest-result.json" ]] && { echo "panel answered after $i click(s)"; break; }
   sleep 4
 done
