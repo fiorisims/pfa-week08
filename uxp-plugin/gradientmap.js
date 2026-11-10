@@ -50,8 +50,8 @@
    * of the panel below it. Split points give a soft edge (0..255). */
   const BANDS = {
     shadows:    { label: "Shadows",    range: [0, 0, 72, 136] },
-    midtones:   { label: "Midtones",   range: [56, 120, 144, 208] },
-    highlights: { label: "Highlights", range: [120, 184, 255, 255] },
+    midtones:   { label: "Midtones",   range: [72, 136, 152, 216] },
+    highlights: { label: "Highlights", range: [152, 216, 255, 255] },
   };
   function bandBlendRange(band) {
     const b = BANDS[band];
@@ -70,6 +70,38 @@
       },
       _options: { dialogOptions: "dontDisplay" },
     };
+  }
+
+  /* Luminance (0..255) of every pixel in an RGB(A)/gray buffer. */
+  function luminanceOf(data, w, h, components) {
+    const count = w * h;
+    const out = new Uint8Array(count);
+    for (let i = 0; i < count; i++) {
+      const si = i * components;
+      if (components <= 2) { out[i] = data[si]; }
+      else { out[i] = (54 * data[si] + 183 * data[si + 1] + 19 * data[si + 2]) >> 8; }
+    }
+    return out;
+  }
+
+  /* A layer-mask buffer (0..255) that limits one Gradient Map to a value band
+   * of the ORIGINAL panel, so the three band maps never re-map each other. The
+   * three weights sum to 255 at every luminance. */
+  function bandMask(lum, band) {
+    const r = (BANDS[band] || { range: [0, 0, 255, 255] }).range;
+    const n = lum.length;
+    const out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const v = lum[i];
+      let wgt;
+      if (v < r[0]) { wgt = 0; }
+      else if (v < r[1]) { wgt = (v - r[0]) / (r[1] - r[0]); }
+      else if (v <= r[2]) { wgt = 1; }
+      else if (v < r[3]) { wgt = (r[3] - v) / (r[3] - r[2]); }
+      else { wgt = 0; }
+      out[i] = Math.round(wgt * 255);
+    }
+    return out;
   }
 
   function gradientDescriptor(name, stops, transparency) {
@@ -176,6 +208,8 @@
     rampStops: rampStops,
     lineArtStops: lineArtStops,
     bandBlendRange: bandBlendRange,
+    luminanceOf: luminanceOf,
+    bandMask: bandMask,
     gradientDescriptor: gradientDescriptor,
     gradientMapMake: gradientMapMake,
     gradientMapSet: gradientMapSet,

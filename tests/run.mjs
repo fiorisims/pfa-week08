@@ -88,4 +88,15 @@ test("interpretMood: every mood has four stops that get lighter", () => {
     for (let i = 1; i < 4; i++) { assert.ok(lum[i] > lum[i - 1], k + " stop " + i); }
   }
 });
+test("band masks tile the value scale: the three weights sum to 255 everywhere", () => {
+  const lum = new Uint8Array(256); for (let i = 0; i < 256; i++) { lum[i] = i; }
+  const s = gm.bandMask(lum, "shadows"), m = gm.bandMask(lum, "midtones"), h = gm.bandMask(lum, "highlights");
+  for (let i = 0; i < 256; i++) { assert.ok(Math.abs(s[i] + m[i] + h[i] - 255) <= 2, "lum " + i + ": " + (s[i] + m[i] + h[i])); }
+  assert.equal(s[0], 255); assert.equal(h[255], 255); assert.equal(m[144], 255);
+});
+test("luminanceOf handles gray, RGB and RGBA", () => {
+  assert.deepEqual(Array.from(gm.luminanceOf(new Uint8Array([200]), 1, 1, 1)), [200]);
+  assert.deepEqual(Array.from(gm.luminanceOf(new Uint8Array([255, 255, 255, 0, 0, 0]), 2, 1, 3)), [255, 0]);
+  assert.deepEqual(Array.from(gm.luminanceOf(new Uint8Array([0, 255, 0, 255]), 1, 1, 4)), [183]);
+});
 console.log(passed + " passed");

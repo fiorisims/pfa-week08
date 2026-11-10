@@ -2577,7 +2577,13 @@ async function tintPanelCore(doc, panel, colors, opts) {
   try {
     if (bands) {
       // Three clipped gradient maps, one per value band, each with its own opacity.
-      // Make them bottom-up so the stack reads Shadows / Midtones / Highlights.
+      // Each carries a layer mask built from the panel's own luminance, so the
+      // maps never re-map each other. Made bottom-up: Shadows / Midtones / Highlights.
+      const isGroup = panelLayer.kind === "group" || (panelLayer.layers && panelLayer.layers.length);
+      const full = isGroup
+        ? await readPreviewRegion(doc, b, W, H, Math.max(W, H))
+        : await readPreviewPixels(doc, panelLayer.id, W, H, Math.max(W, H));
+      const lum = luminanceOf(full.data, full.w, full.h, full.components);
       const order = ["shadows", "midtones", "highlights"];
       let above = panelLayer;
       for (const band of order) {
@@ -2587,10 +2593,26 @@ async function tintPanelCore(doc, panel, colors, opts) {
           blend: blend,
           clip: true,
         });
-        doc.activeLayers = [layer];
-        await action.batchPlay([bandBlendRange(band)], {});
         made.push(layer);
         above = layer;
+        doc.activeLayers = [layer];
+        let maskData = null;
+        try {
+          maskData = await imaging.createImageDataFromBuffer(bandMask(lum, band), {
+            width: full.w, height: full.h, components: 1, chunky: true, colorSpace: "Grayscale",
+          });
+          await imaging.putLayerMask({
+            documentID: doc.id, layerID: layer.id, imageData: maskData,
+            targetBounds: { left: Math.round(Number(b.left)), top: Math.round(Number(b.top)) },
+            replace: true,
+          });
+        } catch (e) {
+          // No mask support: fall back to a Blend If range on the underlying layer.
+          console.error("band mask failed, using Blend If:", e);
+          await action.batchPlay([bandBlendRange(band)], {});
+        } finally {
+          if (maskData) { maskData.dispose(); }
+        }
       }
     } else {
       made.push(await makeGradientMapLayer(doc, panelLayer, stops, {
