@@ -40,8 +40,10 @@ nine things; they are all here, plus the fixes and additions listed under "What 
    - **Line art** is detected per panel (ink and paper, or dark lines on transparency): the ink
      takes the shadow colour and the paper the light colour. Untick **fill the paper too** to
      colour only the lines.
-   - **Split into shadows / midtones / highlights** writes three clipped maps per panel, each
-     limited to one value band, with its own strength slider.
+   - **Split into shadows / midtones / highlights** writes three clipped maps per panel, each with
+     a layer mask built from the panel's own luminance so it only touches its band, and each with
+     its own strength slider. At 100% the three together read close to the single map; the
+     differences sit in the transition zones between bands.
    - **Strength** is the adjustment layers' opacity. It applies to every checked panel (or the
      selected panel, its row in row mode, or every tint) and moves while you drag.
    - **Row variations** drifts the hue gently across a row. **Color range** widens or narrows how
