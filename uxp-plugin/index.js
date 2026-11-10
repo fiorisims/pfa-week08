@@ -1201,6 +1201,61 @@ async function placePng(path, x, y, w, h, name, entry) {
   return id;
 }
 
+
+/* Place a layered PSD/PSB as a group named like a panel, keeping its layers.
+   The group is scaled and moved to fit (x, y, w, h) like a flat panel. */
+async function placePsdLayers(entry, x, y, w, h, name) {
+  const target = app.activeDocument;
+  const nativePath = entry.nativePath || String(entry);
+  let src = null, opened = false;
+  for (let i = 0; i < app.documents.length; i++) {
+    if (sameDocPath(app.documents[i], nativePath)) { src = app.documents[i]; break; }
+  }
+  if (!src) { src = await app.open(entry); opened = true; }
+  try {
+    app.activeDocument = target;
+    const group = await target.createLayerGroup({ name: name || "Panel" });
+    const copied = [];
+    const srcLayers = src.layers.slice();
+    for (let i = srcLayers.length - 1; i >= 0; i--) {
+      const l = srcLayers[i];
+      try {
+        app.activeDocument = src;
+        const dup = await l.duplicate(target, constants.ElementPlacement.PLACEATBEGINNING);
+        app.activeDocument = target;
+        try { await dup.move(group, constants.ElementPlacement.PLACEINSIDE); } catch (e) { console.error(e); }
+        copied.push(dup);
+      } catch (e) { console.error("PSD layer " + l.name + " skipped:", e); }
+    }
+    app.activeDocument = target;
+    const b = group.boundsNoEffects || group.bounds;
+    const cw = Number(b.right) - Number(b.left), ch = Number(b.bottom) - Number(b.top);
+    if (w && h && cw > 0 && ch > 0) {
+      const scale = Math.min(w / cw, h / ch);
+      target.activeLayers = [group];
+      await group.scale(scale * 100, scale * 100, constants.AnchorPosition.TOPLEFT);
+      const b2 = group.boundsNoEffects || group.bounds;
+      const dx = (x || 0) - Number(b2.left), dy = (y || 0) - Number(b2.top);
+      if (dx || dy) { await group.translate(dx, dy); }
+    }
+    return { id: group.id, layers: copied.length };
+  } finally {
+    if (opened) {
+      try { app.activeDocument = src; await src.close(constants.SaveOptions.DONOTSAVECHANGES); } catch (e) { console.error(e); }
+    }
+    try { app.activeDocument = target; } catch (e) { /* ignore */ }
+  }
+}
+
+function isLayeredSource(entry) {
+  return /\.(psd|psb)$/i.test(String((entry && entry.name) || entry || ""));
+}
+
+function readKeepPsdOption() {
+  const el = document.getElementById("optKeepPsd");
+  return !!(el && el.checked);
+}
+
 /* Paint a gradient strip straight into a pixel layer. */
 async function paintGradient(doc, layerId, x, y, w, h, colors) {
   const width = Math.max(1, Math.round(w));
@@ -2401,6 +2456,25 @@ async function readPreviewPixels(doc, layerId, w, h, longSide) {
   } finally { imageData.dispose(); }
 }
 
+/* Read a small preview of the composite inside one rectangle (for panel groups). */
+async function readPreviewRegion(doc, bounds, w, h, longSide) {
+  const long = longSide || 256;
+  const scale = Math.min(long / Math.max(1, w), long / Math.max(1, h), 1);
+  const result = await imaging.getPixels({
+    documentID: doc.id,
+    sourceBounds: { left: Math.round(Number(bounds.left)), top: Math.round(Number(bounds.top)),
+      right: Math.round(Number(bounds.right)), bottom: Math.round(Number(bounds.bottom)) },
+    targetSize: { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) },
+    componentSize: 8,
+    colorSpace: "RGB",
+  });
+  const imageData = result.imageData;
+  try {
+    return { data: await imageData.getData({ chunky: true }), w: imageData.width, h: imageData.height,
+      components: imageData.components || 3 };
+  } finally { imageData.dispose(); }
+}
+
 /* Make one Gradient Map adjustment layer directly above `above` (a layer), and
  * clip it to that layer when clip is true. Returns the new layer. */
 async function makeGradientMapLayer(doc, above, stops, opts) {
@@ -2451,7 +2525,11 @@ async function tintPanelCore(doc, panel, colors, opts) {
 
   let preview;
   try {
-    preview = await readPreviewPixels(doc, panelLayer.id, W, H, 256);
+    if (panelLayer.kind === "group" || (panelLayer.layers && panelLayer.layers.length)) {
+      preview = await readPreviewRegion(doc, b, W, H, 256);
+    } else {
+      preview = await readPreviewPixels(doc, panelLayer.id, W, H, 256);
+    }
   } catch (e) {
     // A smart object still in the stack: rasterize and retry once.
     console.error(e);
@@ -3141,13 +3219,23 @@ async function buildTemplateSheet(spec, execContext, doc, opts) {
   });
 
   let placed = 0;
+  let layered = 0;
   const errors = [];
   try {
     for (const p of (spec.panels || [])) {
       try {
-        const id = await placePng(p.png, p.x, p.y, p.w, p.h, p.name, p.entry);
-        await rasterizeLayer(id);
-        if (opts.desaturate) { await desaturateLayer(id); }
+        if (opts.keepPsd && isLayeredSource(p.entry)) {
+          const r = await placePsdLayers(p.entry, p.x, p.y, p.w, p.h, p.name);
+          const g = findLayerById(doc, r.id);
+          if (opts.desaturate && g && g.layers) {
+            for (const child of g.layers) { if (child.kind === "pixel") { await desaturateLayer(child.id); } }
+          }
+          layered++;
+        } else {
+          const id = await placePng(p.png, p.x, p.y, p.w, p.h, p.name, p.entry);
+          await rasterizeLayer(id);
+          if (opts.desaturate) { await desaturateLayer(id); }
+        }
         placed++;
       } catch (e) {
         console.error(e);
@@ -3171,6 +3259,7 @@ async function buildTemplateSheet(spec, execContext, doc, opts) {
 
   const gray = opts.desaturate ? "desaturated | " : "colour kept | ";
   let summary = `${doc.name} | ${gray}${Math.round(doc.width)}x${Math.round(doc.height)} px @ ${doc.resolution} ppi | ${placed} panel(s) | ${spec.columns} columns | no swatches/labels`;
+  if (layered) { summary += " | " + layered + " PSD panel(s) kept their layers"; }
   if (errors.length) {
     summary += " | skipped " + errors.length + " (" + errors[0] + ")";
   }
@@ -3313,7 +3402,7 @@ async function onBuildTemplate() {
 
           setStatus("Drawing template...");
           const doc = await createSheetDocument(spec, "RGBColorMode");
-          let result = await buildTemplateSheet(spec, ctx, doc, { desaturate: readDesaturateOption() });
+          let result = await buildTemplateSheet(spec, ctx, doc, { desaturate: readDesaturateOption(), keepPsd: readKeepPsdOption() });
           if (readCaptionsOption()) {
             setStatus("Adding captions...");
             await reflowTemplate(doc, { preset: preset, columns: columns, captions: true });
@@ -3413,6 +3502,7 @@ window.addEventListener("load", () => {
   wireCheck("gradientCheck", "optGradientMap");
   wireCheck("rowCheck", "optEmotionRow");
   wireCheck("desaturateCheck", "optDesaturate");
+  wireCheck("keepPsdCheck", "optKeepPsd");
   wireCheck("fillPaperCheck", "optFillPaper");
   wireCheck("bandsCheck", "optBands");
 

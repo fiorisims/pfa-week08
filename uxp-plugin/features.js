@@ -454,10 +454,14 @@ async function onAddImages() {
             const meta = await readImageMeta(f);
             app.activeDocument = doc;
             next += 1;
-            const id = await placePng(meta.path, TEMPLATE_MARGIN, TEMPLATE_MARGIN, meta.width, meta.height,
-              panelLayerName(next, meta.name), f);
-            await rasterizeLayer(id);
-            if (desat) { await desaturateLayer(findPanelImage(doc, next).id); }
+            if (readKeepPsdOption() && isLayeredSource(f)) {
+              await placePsdLayers(f, TEMPLATE_MARGIN, TEMPLATE_MARGIN, meta.width, meta.height, panelLayerName(next, meta.name));
+            } else {
+              const id = await placePng(meta.path, TEMPLATE_MARGIN, TEMPLATE_MARGIN, meta.width, meta.height,
+                panelLayerName(next, meta.name), f);
+              await rasterizeLayer(id);
+              if (desat) { await desaturateLayer(findPanelImage(doc, next).id); }
+            }
             added++;
           } catch (e) { console.error(e); failed.push(f.name); }
         }
