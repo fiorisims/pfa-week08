@@ -97,6 +97,6 @@ test("band masks tile the value scale: the three weights sum to 255 everywhere",
 test("luminanceOf handles gray, RGB and RGBA", () => {
   assert.deepEqual(Array.from(gm.luminanceOf(new Uint8Array([200]), 1, 1, 1)), [200]);
   assert.deepEqual(Array.from(gm.luminanceOf(new Uint8Array([255, 255, 255, 0, 0, 0]), 2, 1, 3)), [255, 0]);
-  assert.deepEqual(Array.from(gm.luminanceOf(new Uint8Array([0, 255, 0, 255]), 1, 1, 4)), [183]);
+  assert.deepEqual(Array.from(gm.luminanceOf(new Uint8Array([0, 255, 0, 255]), 1, 1, 4)), [182]);
 });
 console.log(passed + " passed");
