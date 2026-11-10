@@ -38,6 +38,60 @@
     }
   }
 
+
+  function layerInfo(l, depth) {
+    const o = { name: l.name, opacity: l.opacity, blend: String(l.blendMode), kind: String(l.kind),
+      visible: l.visible, clipped: !!l.isClippingMask, id: l.id };
+    try { const b = l.boundsNoEffects || l.bounds; o.bounds = [b.left, b.top, b.right, b.bottom].map(Number); } catch (e) {}
+    if (l.layers && l.layers.length && depth < 2) { o.layers = l.layers.map((c) => layerInfo(c, depth + 1)); }
+    return o;
+  }
+  /* Fixed probes: UXP forbids new Function / eval in a plugin. */
+  async function probe(step) {
+    const ps = window.require("photoshop");
+    const app = ps.app;
+    const what = step.what;
+    if (what === "docs") {
+      return { count: app.documents.length, names: app.documents.map((d) => d.name) };
+    }
+    if (what === "doc") {
+      if (!app.documents.length) { return null; }
+      const d = app.activeDocument;
+      return { name: d.name, mode: String(d.mode), width: Number(d.width), height: Number(d.height),
+        active: d.activeLayers.map((l) => l.name), layers: d.layers.map((l) => layerInfo(l, 0)) };
+    }
+    if (what === "picker") {
+      const thumbs = [...document.querySelectorAll(".panel-thumb-img")].map((i) => ({
+        shown: i.style.display, srcHead: String(i.src || "").slice(0, 40), srcLen: String(i.src || "").length,
+        natural: [i.naturalWidth, i.naturalHeight], complete: i.complete }));
+      const summary = document.getElementById("panelSummary");
+      return { chips: document.querySelectorAll(".panel-chip").length, summary: summary ? summary.textContent : null,
+        thumbs: thumbs, picks: JSON.parse(JSON.stringify(typeof panelPicks !== "undefined" ? panelPicks : null)) };
+    }
+    if (what === "checkPanels") {
+      const checks = document.querySelectorAll(".panel-check");
+      for (const i of step.indexes) { if (checks[i - 1]) { checks[i - 1].click(); } }
+      await sleep(800);
+      return JSON.parse(JSON.stringify(panelPicks));
+    }
+    if (what === "text") {
+      const el = document.getElementById(step.id);
+      return el ? { text: el.textContent, value: el.value } : null;
+    }
+    if (what === "styles") {
+      return [...document.querySelectorAll(step.selector)].slice(0, 5).map((el) => {
+        const cs = getComputedStyle(el); const o = { text: (el.textContent || "").trim().slice(0, 40) };
+        for (const pr of step.props) { o[pr] = cs[pr] || cs.getPropertyValue(pr); }
+        return o;
+      });
+    }
+    if (what === "dom") {
+      const els = document.querySelectorAll(step.selector);
+      return { count: els.length, first: els[0] ? els[0].outerHTML.slice(0, 300) : null };
+    }
+    throw new Error("unknown probe " + what);
+  }
+
   async function runStep(data, step) {
     const out = { op: step.op, ok: true };
     try {
@@ -63,9 +117,8 @@
         await sleep(step.ms || 500);
       } else if (step.op === "waitIdle") {
         out.value = await waitIdle(step.maxMs);
-      } else if (step.op === "eval") {
-        const fn = new Function(step.js);
-        out.value = await fn();
+      } else if (step.op === "probe") {
+        out.value = await probe(step);
       } else {
         throw new Error("unknown op " + step.op);
       }
