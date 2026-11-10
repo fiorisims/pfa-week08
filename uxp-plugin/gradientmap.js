@@ -45,16 +45,31 @@
     ];
   }
 
-  /* Transparency ramps that restrict one Gradient Map to a value band. */
+  /* Value bands: a Blend If "Underlying Layer" range on the adjustment layer,
+   * so each map only shows over the shadows, the midtones or the highlights
+   * of the panel below it. Split points give a soft edge (0..255). */
   const BANDS = {
-    shadows:    { label: "Shadows",    stops: [[0, 100], [0.25, 100], [0.5, 0], [1, 0]] },
-    midtones:   { label: "Midtones",   stops: [[0, 0], [0.33, 100], [0.67, 100], [1, 0]] },
-    highlights: { label: "Highlights", stops: [[0, 0], [0.5, 0], [0.75, 100], [1, 100]] },
+    shadows:    { label: "Shadows",    range: [0, 0, 72, 136] },
+    midtones:   { label: "Midtones",   range: [56, 120, 144, 208] },
+    highlights: { label: "Highlights", range: [120, 184, 255, 255] },
   };
-  function bandTransparency(band) {
+  function bandBlendRange(band) {
     const b = BANDS[band];
-    if (!b) { return [{ t: 0, opacity: 100 }, { t: 1, opacity: 100 }]; }
-    return b.stops.map(function (s) { return { t: s[0], opacity: s[1] }; });
+    const r = b ? b.range : [0, 0, 255, 255];
+    return {
+      _obj: "set",
+      _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }],
+      to: {
+        _obj: "layer",
+        blendRange: [{
+          _obj: "blendRange",
+          channel: { _ref: "channel", _enum: "channel", _value: "gray" },
+          srcBlackMin: 0, srcBlackMax: 0, srcWhiteMin: 255, srcWhiteMax: 255,
+          destBlackMin: r[0], destBlackMax: r[1], destWhiteMin: r[2], destWhiteMax: r[3],
+        }],
+      },
+      _options: { dialogOptions: "dontDisplay" },
+    };
   }
 
   function gradientDescriptor(name, stops, transparency) {
@@ -160,7 +175,7 @@
     BANDS: BANDS,
     rampStops: rampStops,
     lineArtStops: lineArtStops,
-    bandTransparency: bandTransparency,
+    bandBlendRange: bandBlendRange,
     gradientDescriptor: gradientDescriptor,
     gradientMapMake: gradientMapMake,
     gradientMapSet: gradientMapSet,

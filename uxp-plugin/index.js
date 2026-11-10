@@ -2585,9 +2585,10 @@ async function tintPanelCore(doc, panel, colors, opts) {
           name: baseName + " - " + BANDS[band].label,
           opacity: Math.round(strength * readBandStrength(band) / 100),
           blend: blend,
-          transparency: bandTransparency(band),
           clip: true,
         });
+        doc.activeLayers = [layer];
+        await action.batchPlay([bandBlendRange(band)], {});
         made.push(layer);
         above = layer;
       }

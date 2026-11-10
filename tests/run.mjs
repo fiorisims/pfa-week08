@@ -21,12 +21,16 @@ test("gradientMapMake builds a Photoshop descriptor with 0..4096 locations", () 
   assert.deepEqual(g.colors.map((c) => c.location), [0, 4096]);
   assert.deepEqual([g.colors[1].color.red, g.colors[1].color.green, g.colors[1].color.blue], [200, 210, 220]);
   assert.equal(g.transparency.length, 2);
+  assert.equal(g.transparency[0].opacity._value, 100);
 });
-test("band transparency restricts to one third", () => {
-  const sh = gm.bandTransparency("shadows");
-  assert.equal(sh[0].opacity, 100); assert.equal(sh[sh.length - 1].opacity, 0);
-  const hi = gm.bandTransparency("highlights");
-  assert.equal(hi[0].opacity, 0); assert.equal(hi[hi.length - 1].opacity, 100);
+test("band blend ranges cover the value scale with soft edges", () => {
+  const sh = gm.bandBlendRange("shadows").to.blendRange[0];
+  assert.equal(sh.destBlackMin, 0); assert.ok(sh.destWhiteMin < sh.destWhiteMax && sh.destWhiteMax <= 160);
+  const hi = gm.bandBlendRange("highlights").to.blendRange[0];
+  assert.equal(hi.destWhiteMax, 255); assert.ok(hi.destBlackMin >= 96 && hi.destBlackMin < hi.destBlackMax);
+  const mid = gm.bandBlendRange("midtones").to.blendRange[0];
+  assert.ok(mid.destBlackMax < mid.destWhiteMin);
+  assert.equal(gm.bandBlendRange("shadows").to.blendRange[0].srcWhiteMax, 255);
 });
 test("analyzePixels: colour image is not gray", () => {
   const px = new Uint8Array([200, 30, 30, 255, 30, 200, 30, 255, 30, 30, 200, 255, 100, 100, 100, 255]);
