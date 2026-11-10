@@ -1781,9 +1781,8 @@ async function loadPanelThumbnails(doc, items) {
             const w = Math.max(1, Number(b.right) - Number(b.left));
             const h = Math.max(1, Number(b.bottom) - Number(b.top));
             const scale = Math.min(PANEL_THUMB_W / w, PANEL_THUMB_H / h, 1);
-            const result = await imaging.getPixels({
+            const req = {
               documentID: doc.id,
-              layerID: item.layer.id,
               targetSize: {
                 width: Math.max(1, Math.round(w * scale)),
                 height: Math.max(1, Math.round(h * scale)),
@@ -1791,7 +1790,14 @@ async function loadPanelThumbnails(doc, items) {
               componentSize: 8,
               colorSpace: "RGB",
               applyAlpha: true,
-            });
+            };
+            if (item.layer.kind === "group" || (item.layer.layers && item.layer.layers.length)) {
+              req.sourceBounds = { left: Math.round(Number(b.left)), top: Math.round(Number(b.top)),
+                right: Math.round(Number(b.right)), bottom: Math.round(Number(b.bottom)) };
+            } else {
+              req.layerID = item.layer.id;
+            }
+            const result = await imaging.getPixels(req);
             imageData = result.imageData;
             let url;
             try {
@@ -2543,6 +2549,7 @@ async function tintPanelCore(doc, panel, colors, opts) {
   const W = Math.max(1, Math.round(Number(b.right) - Number(b.left)));
   const H = Math.max(1, Math.round(Number(b.bottom) - Number(b.top)));
 
+  const removed = await removePanelTintLayers(doc, panel.index);
   let preview;
   try {
     if (panelLayer.kind === "group" || (panelLayer.layers && panelLayer.layers.length)) {
@@ -2560,7 +2567,6 @@ async function tintPanelCore(doc, panel, colors, opts) {
   const info = analyzePixels(preview.data, preview.w, preview.h, preview.components);
   preview = null;
 
-  const removed = await removePanelTintLayers(doc, panel.index);
   const gray = modeIsGray(doc.mode) || info.gray;
   const gradient = gradientOption && gray;
   const blend = gradient ? "normal" : "color";
