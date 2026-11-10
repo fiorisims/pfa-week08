@@ -1786,14 +1786,15 @@ async function loadPanelThumbnails(doc, items) {
               applyAlpha: true,
             });
             imageData = result.imageData;
-            const jpeg = await imaging.encodeImageData({
-              imageData: imageData,
-              base64: true,
-            });
-            updates.push({
-              key: panelThumbKey(doc, item.layer),
-              url: "data:image/jpeg;base64," + jpeg,
-            });
+            let url;
+            try {
+              const jpeg = await imaging.encodeImageData({ imageData: imageData, base64: true });
+              url = "data:image/jpeg;base64," + jpeg;
+            } catch (e) {
+              const png = await imaging.encodeImageData({ imageData: imageData, base64: true, format: "png" });
+              url = "data:image/png;base64," + png;
+            }
+            updates.push({ key: panelThumbKey(doc, item.layer), url: url });
           } catch (e) {
             console.error("Panel thumbnail failed for Panel " +
               panelLabel(item.index) + ":", e);
@@ -1941,6 +1942,12 @@ function renderPanelPicker(doc, rows) {
       const img = document.createElement("img");
       img.className = "panel-thumb-img";
       img.style.display = "none";
+      // A thumbnail that fails to decode shows the panel number, never a broken icon.
+      img.addEventListener("error", function () {
+        img.style.display = "none";
+        img.removeAttribute("src");
+        delete panelThumbCache[key];
+      });
       if (panelThumbCache[key]) {
         img.src = panelThumbCache[key];
         img.style.display = "block";
