@@ -139,6 +139,7 @@
             const row = el.closest ? el.closest(".check") : el.parentNode;
             (row || el).click();
           }
+          await sleep(80);
           out.value = { checked: !!el.checked, idle: await waitIdle(step.maxMs) };
         } else {
           el.value = step.value;
