@@ -3538,34 +3538,16 @@ for (const pair of emotionButtons) {
 
   const refreshPanelsBtn = document.getElementById("btnRefreshPanels");
   if (refreshPanelsBtn) {
+    // Refresh re-reads the open template's panels and thumbnails. It never
+    // closes or changes the document.
     refreshPanelsBtn.addEventListener("click", async () => {
-      try {
-        await core.executeAsModal(
-          async () => {
-            const prevDialogs = app.displayDialogs;
-            app.displayDialogs = constants.DialogModes.NONE;
-            try {
-              const doc = app.documents.length ? app.activeDocument : null;
-              if (doc && (doc.name === "Color Script Template" || listPanelLayers(doc).length > 0)) {
-                app.activeDocument = doc;
-                await doc.close(constants.SaveOptions.DONOTSAVECHANGES);
-              }
-            } finally {
-              app.displayDialogs = prevDialogs;
-            }
-          },
-          { commandName: "Color Script: remove template" }
-        );
-      } catch (e) {
-        console.error(e);
-      }
-      panelPicks = [];
-      panelThumbCache = {};
       panelChipNodes = [];
       const rows = await refreshTemplatePanels({ clearCache: true });
+      const n = rows.reduce(function (sum, r) { return sum + r.panels.length; }, 0);
       setStatus(
-        "Template removed. Build a new template to import images.",
-        "ok"
+        n ? "Panels refreshed: " + n + " panel" + (n === 1 ? "" : "s") + "."
+          : "No template panels found. Open a Color Script Template.",
+        n ? "ok" : ""
       );
     });
   }
