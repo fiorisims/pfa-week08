@@ -38,7 +38,7 @@
   function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
   async function waitIdle(maxMs) {
     const t0 = Date.now();
-    await sleep(400);
+    await sleep(1200);
     for (;;) {
       const bar = document.getElementById("progress");
       const busy = (bar && bar.style.display !== "none") ||

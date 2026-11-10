@@ -1228,6 +1228,13 @@ async function placePsdLayers(entry, x, y, w, h, name) {
       } catch (e) { console.error("PSD layer " + l.name + " skipped:", e); }
     }
     app.activeDocument = target;
+    // Drop any empty pixel layer Photoshop left inside the new group.
+    for (const child of (group.layers || []).slice()) {
+      try {
+        const cb = child.boundsNoEffects || child.bounds;
+        if (child.kind === "pixel" && cb && Number(cb.right) - Number(cb.left) <= 0 && copied.indexOf(child) < 0) { await child.delete(); }
+      } catch (e) { /* ignore */ }
+    }
     const b = group.boundsNoEffects || group.bounds;
     const cw = Number(b.right) - Number(b.left), ch = Number(b.bottom) - Number(b.top);
     if (w && h && cw > 0 && ch > 0) {
@@ -2489,6 +2496,12 @@ async function makeGradientMapLayer(doc, above, stops, opts) {
   await action.batchPlay([gradientMapMake(stops, opts)], {});
   const layer = doc.activeLayers[0];
   if (!layer) { throw new Error("The gradient map layer was not created."); }
+  // With a group selected Photoshop creates the new layer inside it; a panel
+  // group needs the map above the group so the clip covers every layer in it.
+  if (above && (above.kind === "group" || (above.layers && above.layers.length)) && layer.parent && layer.parent.id === above.id) {
+    await layer.move(above, constants.ElementPlacement.PLACEBEFORE);
+    doc.activeLayers = [layer];
+  }
   if (opts && opts.clip) {
     try { layer.isClippingMask = true; }
     catch (e) {
