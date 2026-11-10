@@ -786,9 +786,40 @@
       </div>
       </div>
       <div class="row tight">
+        <div id="fillPaperCheck" class="check" role="checkbox" aria-checked="true" tabindex="0">
+          <input id="optFillPaper" type="checkbox" checked />
+          <span class="box"></span>
+          <span>Line art: fill the paper too</span>
+        </div>
+      </div>
+      <div class="row tight">
+        <div id="bandsCheck" class="check" role="checkbox" aria-checked="false" tabindex="0">
+          <input id="optBands" type="checkbox" />
+          <span class="box"></span>
+          <span>Split into shadows / midtones / highlights</span>
+        </div>
+      </div>
+      <div class="row tight">
         <span class="label">Strength</span>
-        <input id="optEmotionStrength" class="slider" type="range" min="10" max="100" step="1" value="100" />
+        <input id="optEmotionStrength" class="slider" type="range" min="0" max="100" step="1" value="100" />
         <span id="strengthOut" class="strength-val">100%</span>
+      </div>
+      <div id="bandRows" hidden>
+        <div class="row tight">
+          <span class="label">Shadows</span>
+          <input id="optBandShadows" class="slider" type="range" min="0" max="100" step="1" value="100" />
+          <span id="optBandShadowsOut" class="strength-val">100%</span>
+        </div>
+        <div class="row tight">
+          <span class="label">Midtones</span>
+          <input id="optBandMidtones" class="slider" type="range" min="0" max="100" step="1" value="100" />
+          <span id="optBandMidtonesOut" class="strength-val">100%</span>
+        </div>
+        <div class="row tight">
+          <span class="label">Highlights</span>
+          <input id="optBandHighlights" class="slider" type="range" min="0" max="100" step="1" value="100" />
+          <span id="optBandHighlightsOut" class="strength-val">100%</span>
+        </div>
       </div>
       <div class="row tight">
         <span class="label">Color range</span>
@@ -820,6 +851,7 @@
       <button id="scrollUp" class="scroll-btn" type="button" title="Scroll up" aria-label="Scroll up">&#9650;</button>
       <button id="scrollDown" class="scroll-btn" type="button" title="Scroll down" aria-label="Scroll down">&#9660;</button>
     </div>
+    <script src="gradientmap.js"></script>
     <script src="index.js"></script>
     <script src="autotest.js"></script>
   </body>

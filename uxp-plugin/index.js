@@ -617,7 +617,7 @@ function panelNumberFromName(name) {
   const s = String(name || "");
   let m = /^Panel (\d+)(?: - .*)?$/.exec(s);
   if (m) { return parseInt(m[1], 10); }
-  m = /^Emotion tint .* - Panel (\d+)$/.exec(s);
+  m = /^Emotion tint .* - Panel (\d+)(?: - [A-Za-z]+)?$/.exec(s);
   if (m) { return parseInt(m[1], 10); }
   return null;
 }
@@ -1639,7 +1639,7 @@ function readStrength() {
   const el = document.getElementById("optEmotionStrength");
   let v = el ? parseInt(el.value, 10) : 100;
   if (!isFinite(v)) { v = 100; }
-  return Math.max(10, Math.min(100, v));
+  return Math.max(0, Math.min(100, v));
 }
 
 function readColorRange() {
@@ -2261,13 +2261,7 @@ async function applyEmotionTint(key, colors, ctx, opts) {
 
   try {
     app.activeDocument = doc;
-    if (doc.mode === "bitmapMode" || doc.mode === "duotoneMode") {
-      await doc.changeMode("grayscaleMode");
-    }
-    if (doc.mode !== "RGBColorMode") {
-      await doc.changeMode("RGBColorMode");
-    }
-
+    await prepareTintDocument(doc);
     const removed = await removeTintLayers(doc);
 
     const W = Math.round(Number(doc.width));
@@ -2275,85 +2269,31 @@ async function applyEmotionTint(key, colors, ctx, opts) {
     if (!(W > 0 && H > 0)) {
       throw new Error("The document has no pixels.");
     }
-
-    let tw = W, th = H;
-    if (W * H > TINT_MAX_PIXELS) {
-      const s = Math.sqrt(TINT_MAX_PIXELS / (W * H));
-      tw = Math.max(1, Math.round(W * s));
-      th = Math.max(1, Math.round(H * s));
-    }
-
-    const result = await imaging.getPixels({
-      documentID: doc.id,
-      targetSize: { width: tw, height: th },
-      componentSize: 8,
-      colorSpace: "RGB",
-    });
-    const imageData = result.imageData;
-    let data, cw, ch, components;
-    try {
-      components = imageData.components || 3;
-      cw = imageData.width;
-      ch = imageData.height;
-      data = await imageData.getData({ chunky: true });
-    } finally {
-      imageData.dispose();
-    }
-
-    const gray = modeGray || isEffectivelyGray(data, cw, ch, components);
+    const preview = await readPreviewPixels(doc, null, W, H, 256);
+    const info = analyzePixels(preview.data, preview.w, preview.h, preview.components);
+    const gray = modeGray || info.gray;
     const gradient = forceGradient || (readGradientOption() && gray);
+    const stops = stopsForPanel(colors, info, { fillPaper: readFillPaperOption() });
 
-    const pixels = colorizePixels(data, cw, ch, components, colors);
-    data = null;
-
-    if (doc.layers.length) {
-      doc.activeLayers = [doc.layers[0]];
-    }
-    const layer = await doc.createLayer({
+    // One Gradient Map adjustment layer on top of the stack, not clipped.
+    const top = doc.layers.length ? doc.layers[0] : null;
+    const layer = await makeGradientMapLayer(doc, top, stops, {
       name: TINT_PREFIX + " - " + emo.label + (gradient ? GRADIENT_SUFFIX : ""),
-      mode: gradient ? "normal" : "color",
       opacity: strength,
+      blend: gradient ? "normal" : "color",
+      clip: false,
     });
-
-    let out;
-    try {
-      out = await imaging.createImageDataFromBuffer(pixels, {
-        width: cw,
-        height: ch,
-        components: 4,
-        chunky: true,
-        colorSpace: "RGB",
-      });
-      await imaging.putPixels({
-        documentID: doc.id,
-        layerID: layer.id,
-        imageData: out,
-        replace: false,
-        targetBounds: { left: 0, top: 0 },
-        commandName: "Emotion tint",
-      });
-      if (cw !== W || ch !== H) {
-        await layer.scale(
-          (W / cw) * 100,
-          (H / ch) * 100,
-          constants.AnchorPosition.TOPLEFT
-        );
-      }
-    } catch (e) {
-      try { await layer.delete(); } catch (e2) { console.error(e2); }
-      throw e;
-    } finally {
-      if (out) { out.dispose(); }
-    }
 
     return {
       name: doc.name,
       label: emo.label,
       strength: strength,
       gray: gray,
+      lineArt: info.lineArt,
       gradient: gradient,
       removed: removed,
       colors: colors,
+      layerId: layer.id,
     };
   } finally {
     await hostControl.resumeHistory(suspension);
@@ -2400,6 +2340,72 @@ async function applyImportEmotionTint(key, colors, ctx, docs) {
   };
 }
 
+
+/* ------------------------------------------------------------------ */
+/* gradient map tint layers                                            */
+/* ------------------------------------------------------------------ */
+
+function readFillPaperOption() {
+  const el = document.getElementById("optFillPaper");
+  return el ? !!el.checked : true;
+}
+
+function readBandsOption() {
+  const el = document.getElementById("optBands");
+  return !!(el && el.checked);
+}
+
+function readBandStrength(band) {
+  const el = document.getElementById("optBand" + band.charAt(0).toUpperCase() + band.slice(1));
+  let v = el ? parseInt(el.value, 10) : 100;
+  if (!isFinite(v)) { v = 100; }
+  return Math.max(0, Math.min(100, v));
+}
+
+/* Read a small preview of one layer (or the composite when layerId is null). */
+async function readPreviewPixels(doc, layerId, w, h, longSide) {
+  const long = longSide || 256;
+  const scale = Math.min(long / Math.max(1, w), long / Math.max(1, h), 1);
+  const req = {
+    documentID: doc.id,
+    targetSize: { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) },
+    componentSize: 8,
+    colorSpace: "RGB",
+  };
+  if (layerId !== null && layerId !== undefined) { req.layerID = layerId; }
+  const result = await imaging.getPixels(req);
+  const imageData = result.imageData;
+  try {
+    return {
+      data: await imageData.getData({ chunky: true }),
+      w: imageData.width, h: imageData.height,
+      components: imageData.components || 3,
+    };
+  } finally { imageData.dispose(); }
+}
+
+/* Make one Gradient Map adjustment layer directly above `above` (a layer), and
+ * clip it to that layer when clip is true. Returns the new layer. */
+async function makeGradientMapLayer(doc, above, stops, opts) {
+  if (above) { doc.activeLayers = [above]; }
+  await action.batchPlay([gradientMapMake(stops, opts)], {});
+  const layer = doc.activeLayers[0];
+  if (!layer) { throw new Error("The gradient map layer was not created."); }
+  if (opts && opts.clip) {
+    try { layer.isClippingMask = true; }
+    catch (e) {
+      await action.batchPlay([{ _obj: "groupEvent", _target: [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }] }], {});
+    }
+  }
+  return layer;
+}
+
+/* Build the stops for a panel from its analysis, the palette and the options. */
+function stopsForPanel(colors, info, opts) {
+  if (info && info.lineArt) { return lineArtStops(colors, info, opts.fillPaper !== false); }
+  return rampStops(colors);
+}
+
 async function prepareTintDocument(doc) {
   if (doc.mode === "bitmapMode" || doc.mode === "duotoneMode") {
     await doc.changeMode("grayscaleMode");
@@ -2416,122 +2422,62 @@ async function tintPanelCore(doc, panel, colors, opts) {
   }
   const emo = opts.emo || { label: "Emotion" };
   const strength = opts.strength === undefined ? readStrength() : opts.strength;
-  const gradientOption = opts.gradient === undefined
-    ? readGradientOption()
-    : opts.gradient;
+  const gradientOption = opts.gradient === undefined ? readGradientOption() : opts.gradient;
+  const fillPaper = opts.fillPaper === undefined ? readFillPaperOption() : opts.fillPaper;
+  const bands = opts.bands === undefined ? readBandsOption() : opts.bands;
 
   let panelLayer = panel.layer;
-  let left = 0, top = 0, W = 0, H = 0;
+  const b = panelLayer.boundsNoEffects || panelLayer.bounds;
+  if (!b) { throw new Error("The selected panel has no pixels."); }
+  const W = Math.max(1, Math.round(Number(b.right) - Number(b.left)));
+  const H = Math.max(1, Math.round(Number(b.bottom) - Number(b.top)));
 
-  function takeBounds(layer) {
-    const b = layer.boundsNoEffects || layer.bounds;
-    if (!b) { return false; }
-    left = Math.round(Number(b.left));
-    top = Math.round(Number(b.top));
-    W = Math.max(1, Math.round(Number(b.right) - Number(b.left)));
-    H = Math.max(1, Math.round(Number(b.bottom) - Number(b.top)));
-    return W > 0 && H > 0;
-  }
-
-  if (!takeBounds(panelLayer)) {
-    throw new Error("The selected panel has no pixels.");
-  }
-
-  function targetFor(width, height) {
-    let tw = width, th = height;
-    if (width * height > TINT_MAX_PIXELS) {
-      const s = Math.sqrt(TINT_MAX_PIXELS / (width * height));
-      tw = Math.max(1, Math.round(width * s));
-      th = Math.max(1, Math.round(height * s));
-    }
-    return { width: tw, height: th };
-  }
-
-  async function readPixels(layer, target) {
-    return await imaging.getPixels({
-      documentID: doc.id,
-      layerID: layer.id,
-      targetSize: target,
-      componentSize: 8,
-      colorSpace: "RGB",
-    });
-  }
-
-  let result;
+  let preview;
   try {
-    result = await readPixels(panelLayer, targetFor(W, H));
+    preview = await readPreviewPixels(doc, panelLayer.id, W, H, 256);
   } catch (e) {
-    // Older template builds or a smart object still in the stack: rasterize
-    // and retry once. Rasterizing can change the layer id, so re-resolve it.
+    // A smart object still in the stack: rasterize and retry once.
     console.error(e);
     await rasterizeLayer(panelLayer.id);
     panelLayer = findPanelImage(doc, panel.index) || panelLayer;
-    if (!takeBounds(panelLayer)) {
-      throw new Error("The selected panel has no pixels.");
-    }
-    result = await readPixels(panelLayer, targetFor(W, H));
+    preview = await readPreviewPixels(doc, panelLayer.id, W, H, 256);
   }
-  const imageData = result.imageData;
-  let data, cw, ch, components;
-  try {
-    components = imageData.components || 3;
-    cw = imageData.width;
-    ch = imageData.height;
-    data = await imageData.getData({ chunky: true });
-  } finally {
-    imageData.dispose();
-  }
-  if (!(cw > 0 && ch > 0)) {
-    throw new Error("The selected panel has no pixels.");
-  }
+  const info = analyzePixels(preview.data, preview.w, preview.h, preview.components);
+  preview = null;
 
   const removed = await removePanelTintLayers(doc, panel.index);
-  const gray = modeIsGray(doc.mode) || isEffectivelyGray(data, cw, ch, components);
+  const gray = modeIsGray(doc.mode) || info.gray;
   const gradient = gradientOption && gray;
-  const pixels = colorizePixels(data, cw, ch, components, colors);
-  data = null;
+  const blend = gradient ? "normal" : "color";
+  const stops = stopsForPanel(colors, info, { fillPaper: fillPaper });
+  const baseName = panelTintName(emo.label, panel.index);
+  const made = [];
 
-  const layer = await doc.createLayer({
-    name: panelTintName(emo.label, panel.index),
-    mode: gradient ? "normal" : "color",
-    opacity: strength,
-  });
-
-  let out;
   try {
-    out = await imaging.createImageDataFromBuffer(pixels, {
-      width: cw,
-      height: ch,
-      components: 4,
-      chunky: true,
-      colorSpace: "RGB",
-    });
-    await imaging.putPixels({
-      documentID: doc.id,
-      layerID: layer.id,
-      imageData: out,
-      replace: false,
-      targetBounds: { left: left, top: top },
-      commandName: "Emotion tint",
-    });
-    if (cw !== W || ch !== H) {
-      await layer.scale(
-        (W / cw) * 100,
-        (H / ch) * 100,
-        constants.AnchorPosition.TOPLEFT
-      );
-    }
-    try {
-      await moveAbove(layer.id, panelLayer.id);
-      layer.isClippingMask = true;
-    } catch (e) {
-      console.error(e);
+    if (bands) {
+      // Three clipped gradient maps, one per value band, each with its own opacity.
+      // Make them bottom-up so the stack reads Shadows / Midtones / Highlights.
+      const order = ["shadows", "midtones", "highlights"];
+      let above = panelLayer;
+      for (const band of order) {
+        const layer = await makeGradientMapLayer(doc, above, stops, {
+          name: baseName + " - " + BANDS[band].label,
+          opacity: Math.round(strength * readBandStrength(band) / 100),
+          blend: blend,
+          transparency: bandTransparency(band),
+          clip: true,
+        });
+        made.push(layer);
+        above = layer;
+      }
+    } else {
+      made.push(await makeGradientMapLayer(doc, panelLayer, stops, {
+        name: baseName, opacity: strength, blend: blend, clip: true,
+      }));
     }
   } catch (e) {
-    try { await layer.delete(); } catch (e2) { console.error(e2); }
+    for (const l of made) { try { await l.delete(); } catch (e2) { console.error(e2); } }
     throw e;
-  } finally {
-    if (out) { out.dispose(); }
   }
 
   return {
@@ -2540,8 +2486,11 @@ async function tintPanelCore(doc, panel, colors, opts) {
     label: emo.label,
     strength: strength,
     gray: gray,
+    lineArt: info.lineArt,
     gradient: gradient,
+    bands: bands,
     removed: removed,
+    layers: made.length,
   };
 }
 
@@ -2734,6 +2683,9 @@ async function onEmotion(key) {
           msg += " | skipped " + result.failures.length + " panel" +
             (result.failures.length === 1 ? "" : "s");
         }
+        const lineArt = result.results.filter(function (r) { return r.lineArt; }).length;
+        if (lineArt) { msg += " | line art: " + lineArt; }
+        if (result.results.some(function (r) { return r.bands; })) { msg += " | 3 value bands"; }
         setStatus(msg, "ok");
       } catch (e) {
         console.error(e);
@@ -2905,113 +2857,115 @@ async function onEmotion(key) {
   }
 }
 
-async function onStrengthChange() {
+/* Which tint layers a Strength change applies to: the checked panels, else the
+ * selected panel (or its row in row mode), else every tint in the document. */
+function strengthTargets(doc) {
+  const all = collectTintLayers(doc.layers, []);
+  const isTemplate = doc.name === TEMPLATE_DOC_NAME || listPanelLayers(doc).length > 0;
+  if (!isTemplate) { return { tints: all, scope: doc.name }; }
+
+  let indexes = panelPicks
+    .filter(function (p) { return p.docId === doc.id; })
+    .map(function (p) { return p.index; });
+  let scope = indexes.length + " checked panel" + (indexes.length === 1 ? "" : "s");
+  if (!indexes.length) {
+    const picked = resolvePanel(doc);
+    if (picked && !picked.error) {
+      if (readRowMode()) {
+        const row = findRowForPanel(panelRows(doc), picked.index);
+        if (row) {
+          indexes = row.panels.map(function (p) { return p.index; });
+          scope = "Row " + row.number;
+        }
+      }
+      if (!indexes.length) { indexes = [picked.index]; scope = "Panel " + panelLabel(picked.index); }
+    }
+  }
+  if (!indexes.length) { return { tints: all, scope: "every tint" }; }
+  return {
+    tints: all.filter(function (l) { return indexes.indexOf(panelNumberFromName(l.name)) >= 0; }),
+    scope: scope,
+  };
+}
+
+function bandOfLayer(layer) {
+  const m = / - (Shadows|Midtones|Highlights)$/.exec(String(layer.name || ""));
+  return m ? m[1].toLowerCase() : null;
+}
+
+let strengthTimer = null;
+let strengthRunning = false;
+let strengthQueued = null;
+
+/* Strength (and the three band sliders) update live while dragging. Calls are
+ * serialized so a fast drag never overlaps two modal scopes. */
+function scheduleStrength(band) {
+  strengthQueued = band || null;
+  if (strengthTimer) { clearTimeout(strengthTimer); }
+  strengthTimer = setTimeout(function () { strengthTimer = null; runStrength(); }, 120);
+}
+
+async function runStrength() {
+  if (strengthRunning) { return; }
+  strengthRunning = true;
+  try {
+    while (strengthQueued !== undefined) {
+      const band = strengthQueued;
+      strengthQueued = undefined;
+      await applyStrength(band);
+    }
+  } finally {
+    strengthRunning = false;
+    strengthQueued = undefined;
+  }
+}
+
+async function applyStrength(band) {
   if (!app.documents.length) { return; }
   const doc = app.activeDocument;
-  const isTemplate =
-    doc.name === TEMPLATE_DOC_NAME || listPanelLayers(doc).length > 0;
   const strength = readStrength();
 
-  let tints = collectTintLayers(doc.layers, []);
-  if (isTemplate) {
-    const picked = resolvePanel(doc);
-    if (!picked || picked.error) {
-      setStatus("Select a panel layer or its tint, then change strength.");
-      return;
-    }
-    syncPanelPickerSelection(doc, picked.index);
-
-    const rowMode = readRowMode();
-    let row = null;
-    let indexes = [picked.index];
-    if (rowMode) {
-      row = findRowForPanel(panelRows(doc), picked.index);
-      if (!row) {
-        setStatus("Could not find this panel's row. Press Refresh panels and try again.");
-        return;
-      }
-      indexes = row.panels.map(function (p) { return p.index; });
-    }
-
-    tints = tints.filter(function (l) {
-      return indexes.indexOf(panelNumberFromName(l.name)) >= 0;
-    });
-    if (!tints.length) {
-      setStatus(
-        rowMode
-          ? "Row " + row.number + " has no emotion tints yet."
-          : "Panel " + panelLabel(picked.index) + " has no emotion tint yet."
-      );
-      return;
-    }
-    try {
-      await core.executeAsModal(
-        async () => {
-          for (const l of tints) { l.opacity = strength; }
-        },
-        { commandName: "Color Script: " + (rowMode ? "row" : "panel") + " tint strength" }
-      );
-      setStatus(
-        "template: " + doc.name + " | " +
-          (rowMode ? "Row " + row.number : "Panel " + panelLabel(picked.index)) +
-          " tint strength " + strength + "%",
-        "ok"
-      );
-    } catch (e) {
-      console.error(e);
-      setStatus("Strength change failed: " + (e && e.message ? e.message : e), "err");
-    }
-    return;
-  }
-
+  let docs = [doc];
   const importTargets = importedGrayscaleDocs();
-  if (importTargets.length && app.activeDocument &&
-      importTargets.some(function (d) { return d.id === app.activeDocument.id; })) {
-    try {
-      const updated = await core.executeAsModal(
-        async () => {
-          let n = 0;
-          for (const d of importTargets) {
-            for (const l of collectTintLayers(d.layers, [])) {
-              l.opacity = strength;
-              n++;
-            }
-          }
-          return n;
-        },
-        { commandName: "Color Script: tint strength" }
-      );
-      if (!updated) {
-        setStatus("The imported images have no emotion tint yet.");
-        return;
-      }
-      setStatus(
-        "import: " + importTargets.length + " image" +
-          (importTargets.length === 1 ? "" : "s") +
-          " | tint strength " + strength + "%",
-        "ok"
-      );
-    } catch (e) {
-      console.error(e);
-      setStatus("Strength change failed: " + (e && e.message ? e.message : e), "err");
-    }
-    return;
+  if (importTargets.length && importTargets.some(function (d) { return d.id === doc.id; })) {
+    docs = importTargets;
   }
 
-  if (!tints.length) { return; }
+  const jobs = [];
+  let scope = "";
+  for (const d of docs) {
+    const t = docs.length > 1 ? { tints: collectTintLayers(d.layers, []), scope: docs.length + " imported images" }
+      : strengthTargets(d);
+    scope = t.scope;
+    for (const l of t.tints) {
+      const lb = bandOfLayer(l);
+      if (band && lb !== band) { continue; }
+      const factor = lb ? readBandStrength(lb) / 100 : 1;
+      jobs.push({ layer: l, opacity: Math.round(strength * factor) });
+    }
+  }
+  if (!jobs.length) {
+    setStatus("No emotion tint to adjust yet. Choose a mood first.");
+    return;
+  }
   try {
     await core.executeAsModal(
-      async () => {
-        for (const l of tints) { l.opacity = strength; }
-      },
+      async () => { for (const j of jobs) { j.layer.opacity = j.opacity; } },
       { commandName: "Color Script: tint strength" }
     );
-    setStatus("emotion: " + doc.name + " | tint strength " + strength + "%", "ok");
+    setStatus(
+      (band ? band.charAt(0).toUpperCase() + band.slice(1) + " " : "Tint ") +
+        "strength " + (band ? readBandStrength(band) : strength) + "% on " + scope +
+        " (" + jobs.length + " layer" + (jobs.length === 1 ? "" : "s") + ")",
+      "ok"
+    );
   } catch (e) {
     console.error(e);
     setStatus("Strength change failed: " + (e && e.message ? e.message : e), "err");
   }
 }
+
+async function onStrengthChange() { return applyStrength(null); }
 
 async function onClearEmotion() {
   const bar = document.getElementById("progress");
@@ -3436,6 +3390,8 @@ window.addEventListener("load", () => {
   wireCheck("gradientCheck", "optGradientMap");
   wireCheck("rowCheck", "optEmotionRow");
   wireCheck("desaturateCheck", "optDesaturate");
+  wireCheck("fillPaperCheck", "optFillPaper");
+  wireCheck("bandsCheck", "optBands");
 
   const scroller = document.getElementById("scroll");
   const scrollNav = document.getElementById("scrollNav");
@@ -3564,15 +3520,29 @@ for (const pair of emotionButtons) {
   setTimeout(function () { refreshTemplatePanels(); }, 250);
   const strength = document.getElementById("optEmotionStrength");
   if (strength) {
-    strength.addEventListener("change", onStrengthChange);
     const out = document.getElementById("strengthOut");
-    const sync = () => {
-      if (out) { out.textContent = strength.value + "%"; }
-    };
-    strength.addEventListener("input", sync);
-    strength.addEventListener("change", sync);
+    const sync = () => { if (out) { out.textContent = strength.value + "%"; } };
+    strength.addEventListener("input", () => { sync(); scheduleStrength(null); });
+    strength.addEventListener("change", () => { sync(); scheduleStrength(null); });
     sync();
   }
+  for (const band of ["shadows", "midtones", "highlights"]) {
+    const id = "optBand" + band.charAt(0).toUpperCase() + band.slice(1);
+    const el = document.getElementById(id);
+    const out = document.getElementById(id + "Out");
+    if (!el) { continue; }
+    const sync = () => { if (out) { out.textContent = el.value + "%"; } };
+    el.addEventListener("input", () => { sync(); scheduleStrength(band); });
+    el.addEventListener("change", () => { sync(); scheduleStrength(band); });
+    sync();
+  }
+  const bandsCheck = document.getElementById("optBands");
+  const bandRows = document.getElementById("bandRows");
+  const syncBands = () => { if (bandRows) { bandRows.hidden = !(bandsCheck && bandsCheck.checked); } };
+  if (bandsCheck) { bandsCheck.addEventListener("change", syncBands); }
+  const bandsRow = document.getElementById("bandsCheck");
+  if (bandsRow) { bandsRow.addEventListener("click", () => setTimeout(syncBands, 0)); }
+  syncBands();
   const colorRange = document.getElementById("optColorRange");
   if (colorRange) {
     const out = document.getElementById("rangeOut");
