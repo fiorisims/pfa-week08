@@ -28,18 +28,29 @@ function saveSettings(patch) {
   return s;
 }
 
-/* Photoshop's current UI theme as one of darkest/dark/light/lightest, or null. */
-function hostTheme() {
+/* Photoshop's current UI theme as one of darkest/dark/light/lightest, or null.
+ * Read from the application's interface-brightness preference (Action Manager). */
+let hostThemeCache = null;
+const HOST_THEME_BY_ENUM = {
+  kPanelBrightnessDarkGray: "darkest",
+  kPanelBrightnessMediumGray: "dark",
+  kPanelBrightnessLightGray: "light",
+  kPanelBrightnessOriginal: "lightest",
+};
+async function readHostTheme() {
   try {
-    const host = uxp.host || {};
-    const t = String(host.uiTheme || host.theme || "").toLowerCase();
-    if (/darkest/.test(t)) { return "darkest"; }
-    if (/dark/.test(t)) { return "dark"; }
-    if (/lightest/.test(t)) { return "lightest"; }
-    if (/light/.test(t)) { return "light"; }
-  } catch (e) { /* ignore */ }
-  return null;
+    const r = await action.batchPlay([{
+      _obj: "get",
+      _target: [{ _property: "kuiBrightnessLevel" }, { _ref: "application", _enum: "ordinal", _value: "targetEnum" }],
+    }], {});
+    const v = r && r[0] && r[0].kuiBrightnessLevel;
+    const key = v && (v._value || v);
+    hostThemeCache = HOST_THEME_BY_ENUM[key] || null;
+    if (!hostThemeCache && key) { hostThemeCache = /dark/i.test(String(key)) ? "dark" : "light"; }
+  } catch (e) { console.error(e); hostThemeCache = null; }
+  return hostThemeCache;
 }
+function hostTheme() { return hostThemeCache; }
 
 function applyTheme(choice) {
   let theme = choice || "aero";
@@ -56,8 +67,9 @@ function initLook() {
   const sizeSel = document.getElementById("optTextSize");
   if (themeSel) {
     themeSel.value = s.theme || "aero";
-    themeSel.addEventListener("change", function () {
+    themeSel.addEventListener("change", async function () {
       saveSettings({ theme: themeSel.value });
+      if (themeSel.value === "match") { await readHostTheme(); }
       applyTheme(themeSel.value);
       setStatus("Theme: " + themeSel.options[themeSel.selectedIndex].textContent +
         (themeSel.value === "match" ? " (" + (hostTheme() || "unknown, using dark") + ")" : ""), "ok");
@@ -73,11 +85,13 @@ function initLook() {
   }
   applyTheme(themeSel ? themeSel.value : "aero");
   /* follow Photoshop when it changes its theme */
-  let lastHost = hostTheme();
-  setInterval(function () {
-    const now = hostTheme();
+  let lastHost = null;
+  const follow = async function () {
+    const now = await readHostTheme();
     if (now !== lastHost) { lastHost = now; if ((themeSel ? themeSel.value : "") === "match") { applyTheme("match"); } }
-  }, 3000);
+  };
+  follow();
+  setInterval(follow, 3000);
   const note = document.getElementById("versionNote");
   if (note) {
     try { note.textContent = "Color Script " + uxp.entrypoints.getPluginVersion?.() ; } catch (e) { note.textContent = ""; }
@@ -209,13 +223,17 @@ function foregroundRgb() {
 /* A four-stop ramp around one colour: dark shadow, the colour, a pale light. */
 function rampFromColor(rgb) {
   const hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
-  const h = hsl[0], s = hsl[1], l = hsl[2];
-  return [
-    hslToRgb(h + 6, Math.min(1, s * 0.9), Math.max(0.06, l * 0.22)),
-    hslToRgb(h - 6, Math.min(1, s * 1.05), Math.max(0.18, l * 0.62)),
-    [rgb[0], rgb[1], rgb[2]],
-    hslToRgb(h + 12, s * 0.45, Math.min(0.96, l + (1 - l) * 0.72)),
+  const h = hsl[0], s = hsl[1];
+  // Keep the colour itself and spread the other stops so lightness always rises.
+  const l = Math.max(0.12, Math.min(0.85, hsl[2]));
+  const stops = [
+    hslToRgb(h + 6, Math.min(1, s * 0.9), Math.max(0.04, l * 0.25)),
+    hslToRgb(h - 6, Math.min(1, s * 1.05), l * 0.65),
+    hsl[2] < 0.12 || hsl[2] > 0.85 ? hslToRgb(h, s, l) : [rgb[0], rgb[1], rgb[2]],
+    hslToRgb(h + 12, s * 0.45, Math.min(0.97, l + (1 - l) * 0.72)),
   ];
+  stops.sort(function (a, b) { return luminance(a) - luminance(b); });
+  return stops;
 }
 
 async function pickColorFromPhotoshop(start) {
@@ -318,6 +336,14 @@ function captionLayerName(index) { return "Caption " + panelLabel(index); }
 
 function isCaptionLayer(l) { return /^Caption \d+$/.test(String(l.name || "")); }
 
+/* Photoshop names a new text layer after its contents, so rename it afterwards. */
+async function addCaption(text, cx, y, index) {
+  const id = await addText(text, cx, y, 28, [40, 40, 40], false, true, captionLayerName(index));
+  const l = findLayerById(app.activeDocument, id);
+  if (l) { l.name = captionLayerName(index); }
+  return l;
+}
+
 async function removeCaptions(doc) {
   const doomed = [];
   (function walk(layers) {
@@ -389,9 +415,8 @@ async function reflowTemplate(doc, opts) {
     for (const p of placed) {
       const text = panelDisplayName(p.layer);
       try {
-        const id = await addText(text, p.cx, p.y + 26, 22, [40, 40, 40], false, true, captionLayerName(p.index));
-        const l = findLayerById(doc, id);
-        if (l) { try { l.move(doc.layers[doc.layers.length - 1], constants.ElementPlacement.PLACEBEFORE); } catch (e) { /* keep where it is */ } }
+        const l = await addCaption(text, p.cx, p.y + 30, p.index);
+        if (l) { try { await l.move(doc.layers[doc.layers.length - 1], constants.ElementPlacement.PLACEBEFORE); } catch (e) { /* keep where it is */ } }
       } catch (e) { console.error(e); }
     }
   }
